@@ -38,8 +38,6 @@ const dice = {
     rollDiceHopeFear: () => {
         let hope = dice.rollDice(1, 12)
         let fear = dice.rollDice(1, 12)
-        console.log(hope)
-        console.log(fear)
         let result = (hope >= fear) ? (hope + fear) + " with hope" : (hope + fear) + " with fear"
         let title = 'hope was ' + hope + ', fear was ' + fear
         return dice.createDiceElement(result, title)
