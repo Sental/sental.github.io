@@ -28,19 +28,20 @@
    *   physArgs — args for the physics shape
    */
   const DIE_DEFS = {
+    // phys: box settles cleanly on a face; sphere never stops on a plane
     '2':        { visGeo: 'cylinder32', phys: 'cylinder', physArgs: [0.9, 0.9, 0.35, 32] },
-    '3':        { visGeo: 'tetra',      phys: 'sphere',   physArgs: [1.1] },
-    '4':        { visGeo: 'tetra',      phys: 'sphere',   physArgs: [1.1] },
-    '5':        { visGeo: 'cylinder5',  phys: 'cylinder', physArgs: [0.9, 0.9, 0.6, 5]  },
+    '3':        { visGeo: 'tetra',      phys: 'box',      physArgs: [0.72, 0.72, 0.72]  },
+    '4':        { visGeo: 'tetra',      phys: 'box',      physArgs: [0.72, 0.72, 0.72]  },
+    '5':        { visGeo: 'cylinder5',  phys: 'cylinder', physArgs: [0.9, 0.9, 0.55, 5] },
     '6':        { visGeo: 'box',        phys: 'box',      physArgs: [0.85, 0.85, 0.85]  },
-    '7':        { visGeo: 'cylinder7',  phys: 'cylinder', physArgs: [0.9, 0.9, 0.6, 7]  },
-    '8':        { visGeo: 'octa',       phys: 'sphere',   physArgs: [1.1] },
-    '10':       { visGeo: 'd10',        phys: 'cylinder', physArgs: [0.9, 0.3, 1.2, 5]  },
-    '12':       { visGeo: 'dodeca',     phys: 'sphere',   physArgs: [1.15] },
-    '14':       { visGeo: 'octa',       phys: 'sphere',   physArgs: [1.1] },
-    '16':       { visGeo: 'icosa',      phys: 'sphere',   physArgs: [1.15] },
-    '20':       { visGeo: 'icosa',      phys: 'sphere',   physArgs: [1.15] },
-    '100':      { visGeo: 'sphere',     phys: 'sphere',   physArgs: [1.15] },
+    '7':        { visGeo: 'cylinder7',  phys: 'cylinder', physArgs: [0.9, 0.9, 0.55, 7] },
+    '8':        { visGeo: 'octa',       phys: 'box',      physArgs: [0.78, 0.78, 0.78]  },
+    '10':       { visGeo: 'd10',        phys: 'cylinder', physArgs: [0.85, 0.3, 1.15, 5]},
+    '12':       { visGeo: 'dodeca',     phys: 'box',      physArgs: [0.82, 0.82, 0.82]  },
+    '14':       { visGeo: 'octa',       phys: 'box',      physArgs: [0.78, 0.78, 0.78]  },
+    '16':       { visGeo: 'icosa',      phys: 'box',      physArgs: [0.82, 0.82, 0.82]  },
+    '20':       { visGeo: 'icosa',      phys: 'box',      physArgs: [0.82, 0.82, 0.82]  },
+    '100':      { visGeo: 'sphere',     phys: 'box',      physArgs: [0.82, 0.82, 0.82]  },
     'hopefear': { visGeo: 'box',        phys: 'box',      physArgs: [0.85, 0.85, 0.85]  },
   };
 
@@ -144,7 +145,7 @@
   function setupCannon() {
     const CANNON = window.CANNON;
     world = new CANNON.World();
-    world.gravity.set(0, -40, 0);
+    world.gravity.set(0, -45, 0);
     world.broadphase = new CANNON.NaiveBroadphase();
     world.solver.iterations = 30;
     world.allowSleep = true;
@@ -153,12 +154,12 @@
     dieMat    = new CANNON.Material('die');
 
     world.addContactMaterial(new CANNON.ContactMaterial(groundMat, dieMat, {
-      friction:    0.5,
-      restitution: 0.3,
+      friction:    0.8,    // high friction = tumbling, not sliding
+      restitution: 0.05,   // near-zero = energy dies on first bounce
     }));
     world.addContactMaterial(new CANNON.ContactMaterial(dieMat, dieMat, {
-      friction:    0.3,
-      restitution: 0.2,
+      friction:    0.6,
+      restitution: 0.02,
     }));
 
     // Floor
@@ -312,12 +313,12 @@
     // Physics body — always a simple primitive
     const shape = makePhysShape(def.phys, def.physArgs);
     const body  = new CANNON.Body({
-      mass:     1,
-      material: dieMat,
-      linearDamping:  0.08,
-      angularDamping: 0.08,
-      sleepTimeLimit:   0.4,
-      sleepSpeedLimit:  0.2,
+      mass:            1,
+      material:        dieMat,
+      linearDamping:   0.6,   // absorbs energy between bounces fast
+      angularDamping:  0.6,   // spin dies out quickly after landing
+      sleepTimeLimit:  0.3,   // sleep after 0.3s of low motion
+      sleepSpeedLimit: 0.15,  // aggressive sleep threshold
     });
     body.allowSleep = true;
     body.addShape(shape);
@@ -514,10 +515,12 @@
       const bodies  = [bodyA, bodyB].filter(Boolean);
 
       const allSettled = bodies.every(b => {
+        // Consider sleeping bodies settled too
+        if (b.sleepState === 2) return true; // CANNON.Body.SLEEPING = 2
         const lv = b.velocity, av = b.angularVelocity;
         const linSpd = Math.sqrt(lv.x*lv.x + lv.y*lv.y + lv.z*lv.z);
         const angSpd = Math.sqrt(av.x*av.x + av.y*av.y + av.z*av.z);
-        return linSpd < 0.3 && angSpd < 0.3;
+        return linSpd < 0.15 && angSpd < 0.15;
       });
 
       if (elapsed > MAX_ROLL_MS) {
