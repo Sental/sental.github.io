@@ -91,7 +91,6 @@
   ═══════════════════════════════════════════════════ */
   function setupThree() {
     const THREE = window.THREE;
-    const BufferGeometryUtils = window.BufferGeometryUtils;
     const cv    = document.getElementById('diceCanvas');
 
     renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
@@ -191,9 +190,8 @@
         return convexPair(new THREE.IcosahedronGeometry(1.3));
       case 'penta': {
         // Pentagonal dipyramid (double cone) — good D10 stand-in
-        //const g = new THREE.CylinderGeometry(0.01, 1.25, 2.2, 5);
-        //return { three: g, cannon: new CANNON.Cylinder(0.01, 1.25, 2.2, 5) };
-        return createD10Assets();
+        const g = new THREE.CylinderGeometry(0.01, 1.25, 2.2, 5);
+        return { three: g, cannon: new CANNON.Cylinder(0.01, 1.25, 2.2, 5) };
       }
       case 'cylinder': {
         const seg = proxy || 32;
@@ -212,67 +210,6 @@
         return convexPair(new THREE.IcosahedronGeometry(1.3));
     }
   }
-
-  /**
- * Creates both Three.js geometry and a Cannon.js ConvexPolyhedron shape.
- */
-function createD10Assets(radius = 1, height = 1.5) {
-    // --- 1. Define Vertices (Common to both) ---
-    const vertices = [];
-    const ringHeight = radius * 0.3;
-    vertices.push(0, 0, height);  // Top Pole
-    vertices.push(0, 0, -height); // Bottom Pole
-
-    for (let i = 0; i < 5; i++) {
-        const angle = (i * 2 * Math.PI) / 5;
-        vertices.push(Math.cos(angle) * radius, Math.sin(angle) * radius, ringHeight);
-    }
-    for (let i = 0; i < 5; i++) {
-        const angle = (i * 2 * Math.PI) / 5 + (Math.PI / 5);
-        vertices.push(Math.cos(angle) * radius, Math.sin(angle) * radius, -ringHeight);
-    }
-
-    // --- 2. Create Three.js Geometry ---
-    // (Indices calculation omitted for brevity - see previous steps)
-    const indices = [
-        // Top Half (Connecting Pole 0)
-        0, 2, 7,    0, 7, 3,  // Kite 1
-        0, 3, 8,    0, 8, 4,  // Kite 2
-        0, 4, 9,    0, 9, 5,  // Kite 3
-        0, 5, 10,   0, 10, 6, // Kite 4
-        0, 6, 11,   0, 11, 2, // Kite 5
-        // Bottom Half (Connecting Pole 1)
-        1, 8, 3,    1, 3, 7,  // Kite 6
-        1, 9, 4,    1, 4, 8,  // Kite 7
-        1, 10, 5,   1, 5, 9,  // Kite 8
-        1, 11, 6,   1, 6, 10, // Kite 9
-        1, 7, 2,    1, 2, 11  // Kite 10
-    ];
-    let threeGeo = new THREE.PolyhedronGeometry(vertices, indices, radius, 0);
-    
-    // --- 3. Convert to Cannon.js Shape ---
-    // Merge vertices first so Cannon sees a solid object
-    const mergedGeo = BufferGeometryUtils.mergeVertices(threeGeo);
-    const position = mergedGeo.attributes.position.array;
-    const index = mergedGeo.index.array;
-
-    const cannonVertices = [];
-    for (let i = 0; i < position.length; i += 3) {
-        cannonVertices.push(new CANNON.Vec3(position[i], position[i + 1], position[i + 2]));
-    }
-
-    const cannonFaces = [];
-    for (let i = 0; i < index.length; i += 3) {
-        cannonFaces.push([index[i], index[i + 1], index[i + 2]]);
-    }
-
-    const cannonShape = new CANNON.ConvexPolyhedron({
-        vertices: cannonVertices,
-        faces: cannonFaces
-    });
-
-    return { three: threeGeo, cannon: cannonShape };
-}
 
   // Build matching Three + Cannon convex pair from a BufferGeometry
   function convexPair(bufGeo) {
