@@ -91,6 +91,7 @@
   ═══════════════════════════════════════════════════ */
   function setupThree() {
     const THREE = window.THREE;
+    const BufferGeometryUtils = window.BufferGeometryUtils;
     const cv    = document.getElementById('diceCanvas');
 
     renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
@@ -251,7 +252,7 @@ function createD10Assets(radius = 1, height = 1.5) {
     
     // --- 3. Convert to Cannon.js Shape ---
     // Merge vertices first so Cannon sees a solid object
-    const mergedGeo = mergeVertices(threeGeo);
+    const mergedGeo = BufferGeometryUtils.mergeVertices(threeGeo);
     const position = mergedGeo.attributes.position.array;
     const index = mergedGeo.index.array;
 
