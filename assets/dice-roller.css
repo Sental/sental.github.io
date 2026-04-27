@@ -243,3 +243,93 @@ body {
 .history-chip.fear   { border-color: var(--clr-fear); color: var(--clr-outcome-fear); }
 .history-chip.crit   { border-color: #ffe066; color: #ffe066; }
 .history-chip.fumble { border-color: var(--clr-fear); color: var(--clr-outcome-fear); }
+
+/* --- Top bar --- */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.75rem;
+  gap: 1rem;
+}
+
+.top-bar .roller-title {
+  margin-bottom: 0;
+}
+
+/* --- Streamer toggle button --- */
+.streamer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--clr-surface);
+  border: 1.5px solid var(--clr-border);
+  border-radius: 10px;
+  color: var(--clr-text-muted);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.streamer-toggle:hover {
+  border-color: var(--clr-accent);
+  color: var(--clr-accent2);
+  background: var(--clr-surface2);
+}
+.streamer-toggle.active {
+  border-color: var(--clr-accent2);
+  color: var(--clr-accent2);
+  background: rgba(197,151,58,0.15);
+  box-shadow: 0 0 10px rgba(197,151,58,0.2);
+}
+.streamer-icon { font-size: 1rem; line-height: 1; }
+
+/* --- Streamer mode --- */
+/* Hides the Jekyll theme chrome (header/nav/footer injected by the theme) */
+body.streamer-mode > header,
+body.streamer-mode > nav,
+body.streamer-mode > footer,
+body.streamer-mode .site-header,
+body.streamer-mode .site-footer,
+body.streamer-mode .page-header {
+  display: none !important;
+}
+
+/* Centre the main panel and hide everything except the stage */
+body.streamer-mode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 0;
+}
+
+body.streamer-mode .roller-main {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Hide: title, die selector, history — keep: top-bar (for the toggle), stage */
+body.streamer-mode .roller-title,
+body.streamer-mode .dice-selector {
+  display: none !important;
+}
+
+/* Keep the toggle visible in streamer mode but label changes via JS */
+body.streamer-mode .streamer-toggle {
+  margin-bottom: 0.75rem;
+}
+
+@keyframes flashIn {
+  0%   { opacity: 0; transform: scale(0.85); }
+  60%  { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}

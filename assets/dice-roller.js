@@ -18,28 +18,27 @@
   /* ═══════════════════════════════════════════════════
      CONFIG
   ═══════════════════════════════════════════════════ */
-  const ROLL_MS     = 2600;   // physics runs for this long
-  const SETTLE_MS   = 350;    // pause after physics stops
-  const SIZE        = 280;    // canvas px (square)
-  const TRAY        = 3.2;    // half-width of invisible walls
-  const FLOOR_Y     = -2.0;
+  const ROLL_MS   = 2600;
+  const SETTLE_MS = 400;
+  const SIZE      = 280;
+  const TRAY      = 3.2;
+  const FLOOR_Y   = -2.0;
 
-  // geo: Three.js shape  |  proxy: label used for cylinder radialSegments
   const DIE_CONFIG = {
-    '2':        { geo: 'cylinder', proxy: 32  },  // coin
+    '2':        { geo: 'cylinder', proxy: 32  },
     '3':        { geo: 'tetra',    proxy: null },
     '4':        { geo: 'tetra',    proxy: null },
     '5':        { geo: 'cylinder', proxy: 5   },
     '6':        { geo: 'box',      proxy: null },
     '7':        { geo: 'cylinder', proxy: 7   },
     '8':        { geo: 'octa',     proxy: null },
-    '10':       { geo: 'penta',    proxy: null },
+    '10':       { geo: 'd10',      proxy: null },  // true pentagonal trapezohedron
     '12':       { geo: 'dodeca',   proxy: null },
-    '14':       { geo: 'octa',     proxy: null },  // closest = D8 shape
-    '16':       { geo: 'icosa',    proxy: null },  // closest = D20 shape
+    '14':       { geo: 'octa',     proxy: null },
+    '16':       { geo: 'icosa',    proxy: null },
     '20':       { geo: 'icosa',    proxy: null },
     '100':      { geo: 'sphere',   proxy: null },
-    'hopefear': { geo: 'box',      proxy: null },  // two D6s
+    'hopefear': { geo: 'box',      proxy: null },
   };
 
   /* ═══════════════════════════════════════════════════
@@ -48,8 +47,9 @@
   let selectedDie = null;
   let rolling     = false;
   let rafId       = null;
-  let scene, camera, renderer, world, dieMat;
-  let meshA, bodyA, meshB, bodyB;  // B only for hopefear
+  let scene, camera, renderer, world, cannonDieMat;
+  let meshA, bodyA, meshB, bodyB;
+  let labelSpriteA = null, labelSpriteB = null;
 
   /* ═══════════════════════════════════════════════════
      DOM
@@ -61,7 +61,7 @@
   const dieWrap    = document.getElementById('dieWrap');
 
   /* ═══════════════════════════════════════════════════
-     BOOTSTRAP — wait for libs, then set up canvas
+     BOOT
   ═══════════════════════════════════════════════════ */
   function boot() {
     if (!window.THREE || !window.CANNON) { setTimeout(boot, 50); return; }
@@ -72,13 +72,11 @@
   }
 
   function setupCanvas() {
-    // Hide legacy SVG elements
-    dieWrap.querySelectorAll('svg, .hope-fear-wrap').forEach(el => {
+    dieWrap.querySelectorAll('svg, .hope-fear-wrap, .canvas-placeholder').forEach(el => {
       el.style.display = 'none';
     });
     dieWrap.style.width  = SIZE + 'px';
     dieWrap.style.height = SIZE + 'px';
-
     const cv = document.createElement('canvas');
     cv.id = 'diceCanvas';
     cv.width = SIZE; cv.height = SIZE;
@@ -87,7 +85,7 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     THREE.JS
+     THREE.JS SCENE
   ═══════════════════════════════════════════════════ */
   function setupThree() {
     const THREE = window.THREE;
@@ -104,22 +102,22 @@
     camera.position.set(0, 9, 6);
     camera.lookAt(0, 0, 0);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    // Brighter ambient so ivory dice pop against dark bg
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 
-    const sun = new THREE.DirectionalLight(0xfff5dd, 1.2);
+    const sun = new THREE.DirectionalLight(0xfff8ee, 1.6);
     sun.position.set(5, 10, 7);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
     scene.add(sun);
 
-    const fill = new THREE.DirectionalLight(0xaaccff, 0.35);
-    fill.position.set(-4, 6, -4);
-    scene.add(fill);
+    const rim = new THREE.DirectionalLight(0x88aaff, 0.5);
+    rim.position.set(-5, 4, -5);
+    scene.add(rim);
 
-    // Shadow-receiving floor plane (invisible)
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(20, 20),
-      new THREE.ShadowMaterial({ opacity: 0.28 })
+      new THREE.ShadowMaterial({ opacity: 0.35 })
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = FLOOR_Y;
@@ -128,31 +126,27 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     CANNON.JS
+     CANNON.JS WORLD
   ═══════════════════════════════════════════════════ */
   function setupCannon() {
     const CANNON = window.CANNON;
-
     world = new CANNON.World();
     world.gravity.set(0, -30, 0);
     world.broadphase = new CANNON.NaiveBroadphase();
     world.solver.iterations = 20;
 
     const groundMat = new CANNON.Material('ground');
-    dieMat          = new CANNON.Material('die');
-
-    world.addContactMaterial(new CANNON.ContactMaterial(groundMat, dieMat, {
+    cannonDieMat    = new CANNON.Material('die');
+    world.addContactMaterial(new CANNON.ContactMaterial(groundMat, cannonDieMat, {
       friction: 0.35, restitution: 0.35,
     }));
 
-    // Floor
     const floor = new CANNON.Body({ mass: 0, material: groundMat });
     floor.addShape(new CANNON.Plane());
     floor.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
     floor.position.y = FLOOR_Y;
     world.addBody(floor);
 
-    // Four invisible walls
     [
       { pos: [ TRAY, 0, 0], ax: [0,0,1], ang:  Math.PI/2 },
       { pos: [-TRAY, 0, 0], ax: [0,0,1], ang: -Math.PI/2 },
@@ -168,7 +162,170 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     GEOMETRY
+     VISUAL MATERIALS  — ivory dice on dark background
+  ═══════════════════════════════════════════════════ */
+  function matDefault() {
+    return new THREE.MeshStandardMaterial({
+      color:     0xf5f0e8,   // warm ivory
+      emissive:  0x2a2010,
+      emissiveIntensity: 0.04,
+      roughness: 0.35,
+      metalness: 0.08,
+    });
+  }
+  function matHope() {
+    return new THREE.MeshStandardMaterial({
+      color: 0xd0eeff, emissive: 0x001830,
+      emissiveIntensity: 0.1, roughness: 0.3, metalness: 0.15,
+    });
+  }
+  function matFear() {
+    return new THREE.MeshStandardMaterial({
+      color: 0xffe0d8, emissive: 0x300000,
+      emissiveIntensity: 0.1, roughness: 0.3, metalness: 0.15,
+    });
+  }
+
+  /* ═══════════════════════════════════════════════════
+     NUMBER LABEL SPRITE
+     Rendered onto a canvas texture, placed above the die
+  ═══════════════════════════════════════════════════ */
+  function makeNumberSprite(text, color) {
+    const THREE = window.THREE;
+    const cv    = document.createElement('canvas');
+    cv.width = 256; cv.height = 256;
+    const ctx = cv.getContext('2d');
+
+    // Transparent background
+    ctx.clearRect(0, 0, 256, 256);
+
+    // Dark pill background for readability
+    ctx.fillStyle = 'rgba(10, 8, 20, 0.78)';
+    ctx.beginPath();
+    ctx.roundRect(28, 78, 200, 100, 18);
+    ctx.fill();
+
+    // Number text
+    ctx.fillStyle   = color || '#f5f0e8';
+    ctx.font        = 'bold 96px "Fira Sans", sans-serif';
+    ctx.textAlign   = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 128, 128);
+
+    const tex = new THREE.CanvasTexture(cv);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(2.2, 2.2, 1);
+    return sprite;
+  }
+
+  function removeLabelSprites() {
+    [labelSpriteA, labelSpriteB].forEach(s => { if (s) scene.remove(s); });
+    labelSpriteA = labelSpriteB = null;
+  }
+
+  function showLabel(mesh, text, color) {
+    const THREE  = window.THREE;
+    const sprite = makeNumberSprite(text, color);
+    // Float the sprite above wherever the die settled
+    sprite.position.set(
+      mesh.position.x,
+      mesh.position.y + 2.2,
+      mesh.position.z
+    );
+    scene.add(sprite);
+    return sprite;
+  }
+
+  /* ═══════════════════════════════════════════════════
+     PENTAGONAL TRAPEZOHEDRON  (real D10 geometry)
+     10 kite-shaped faces, 5 upper + 5 lower, twist-offset
+  ═══════════════════════════════════════════════════ */
+  function makeD10() {
+    const THREE  = window.THREE;
+    const CANNON = window.CANNON;
+
+    const n   = 5;         // pentagonal
+    const r   = 1.1;       // equatorial radius
+    const top = 1.3;       // apex height
+    const bot = -1.3;
+    const eq  = 0.22;      // equatorial band height offset
+    const twist = Math.PI / n;   // half-step twist between upper/lower ring
+
+    // Vertices:
+    //  0        = top apex
+    //  1..5     = upper ring  (angled at +eq)
+    //  6..10    = lower ring  (angled at -eq, twisted by twist)
+    //  11       = bottom apex
+    const verts = [];
+    verts.push(new THREE.Vector3(0, top, 0));  // 0
+
+    for (let i = 0; i < n; i++) {
+      const a = (2 * Math.PI * i) / n;
+      verts.push(new THREE.Vector3(r * Math.cos(a), eq, r * Math.sin(a)));  // 1-5
+    }
+    for (let i = 0; i < n; i++) {
+      const a = (2 * Math.PI * i) / n + twist;
+      verts.push(new THREE.Vector3(r * Math.cos(a), -eq, r * Math.sin(a))); // 6-10
+    }
+    verts.push(new THREE.Vector3(0, bot, 0));  // 11
+
+    // 10 kite faces: each face = top-apex OR bot-apex + two upper + two lower ring verts
+    // Upper kites (top apex, upper[i], lower[i], upper[i+1])
+    // Lower kites (bot apex, lower[i], upper[i+1], lower[i+1])
+    const faces = [];
+    for (let i = 0; i < n; i++) {
+      const u0 = 1 + i;
+      const u1 = 1 + (i + 1) % n;
+      const l0 = 6 + i;
+      const l1 = 6 + (i + 1) % n;
+      // Upper kite — split into 2 triangles
+      faces.push([0,  u0, l0]);
+      faces.push([0,  l0, u1]);
+      // Lower kite
+      faces.push([11, l0, u1]);
+      faces.push([11, u1, l1]);
+    }
+
+    // Build BufferGeometry from triangles
+    const positions = [];
+    const normals   = [];
+    const uvs       = [];
+
+    faces.forEach(([a, b, c]) => {
+      const va = verts[a], vb = verts[b], vc = verts[c];
+      [va, vb, vc].forEach(v => positions.push(v.x, v.y, v.z));
+
+      // Flat normal
+      const ab = new THREE.Vector3().subVectors(vb, va);
+      const ac = new THREE.Vector3().subVectors(vc, va);
+      const n3 = new THREE.Vector3().crossVectors(ab, ac).normalize();
+      for (let k = 0; k < 3; k++) normals.push(n3.x, n3.y, n3.z);
+
+      uvs.push(0,0, 1,0, 0.5,1);
+    });
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals,   3));
+    geo.setAttribute('uv',       new THREE.Float32BufferAttribute(uvs,       2));
+
+    // Cannon convex hull from unique verts
+    const cVerts = verts.map(v => new CANNON.Vec3(v.x, v.y, v.z));
+    const cFaces = [];
+    for (let i = 0; i < n; i++) {
+      const u0 = 1 + i, u1 = 1 + (i+1)%n;
+      const l0 = 6 + i, l1 = 6 + (i+1)%n;
+      cFaces.push([0, u0, l0], [0, l0, u1]);
+      cFaces.push([11, l0, u1], [11, u1, l1]);
+    }
+    const cannon = new CANNON.ConvexPolyhedron(cVerts, cFaces);
+
+    return { three: geo, cannon };
+  }
+
+  /* ═══════════════════════════════════════════════════
+     GEOMETRY FACTORY
   ═══════════════════════════════════════════════════ */
   function makeGeo(geoType, proxy) {
     const THREE  = window.THREE;
@@ -180,22 +337,14 @@
           three:  new THREE.BoxGeometry(1.6, 1.6, 1.6),
           cannon: new CANNON.Box(new CANNON.Vec3(0.8, 0.8, 0.8)),
         };
-      case 'tetra':
-        return convexPair(new THREE.TetrahedronGeometry(1.3));
-      case 'octa':
-        return convexPair(new THREE.OctahedronGeometry(1.3));
-      case 'dodeca':
-        return convexPair(new THREE.DodecahedronGeometry(1.3));
-      case 'icosa':
-        return convexPair(new THREE.IcosahedronGeometry(1.3));
-      case 'penta': {
-        // Pentagonal dipyramid (double cone) — good D10 stand-in
-        const g = new THREE.CylinderGeometry(0.01, 1.25, 2.2, 5);
-        return { three: g, cannon: new CANNON.Cylinder(0.01, 1.25, 2.2, 5) };
-      }
+      case 'tetra':   return convexPair(new THREE.TetrahedronGeometry(1.3));
+      case 'octa':    return convexPair(new THREE.OctahedronGeometry(1.3));
+      case 'dodeca':  return convexPair(new THREE.DodecahedronGeometry(1.3));
+      case 'icosa':   return convexPair(new THREE.IcosahedronGeometry(1.3));
+      case 'd10':     return makeD10();
       case 'cylinder': {
-        const seg = proxy || 32;
-        const thick = (seg <= 7) ? 0.7 : 0.45;  // coin vs multi-side
+        const seg   = proxy || 32;
+        const thick = seg <= 7 ? 0.65 : 0.4;
         return {
           three:  new THREE.CylinderGeometry(1.05, 1.05, thick, seg),
           cannon: new CANNON.Cylinder(1.05, 1.05, thick, seg),
@@ -211,7 +360,6 @@
     }
   }
 
-  // Build matching Three + Cannon convex pair from a BufferGeometry
   function convexPair(bufGeo) {
     const CANNON = window.CANNON;
     const pos    = bufGeo.attributes.position;
@@ -240,25 +388,11 @@
         if (a !== b && b !== c && a !== c) faces.push([a, b, c]);
       }
     }
-
     return { three: bufGeo, cannon: new CANNON.ConvexPolyhedron(verts, faces) };
   }
 
   /* ═══════════════════════════════════════════════════
-     VISUAL MATERIALS
-  ═══════════════════════════════════════════════════ */
-  function mat(color, emissive) {
-    return new THREE.MeshStandardMaterial({
-      color, emissive: emissive || 0x110e1a,
-      emissiveIntensity: 0.18, roughness: 0.42, metalness: 0.58,
-    });
-  }
-  const matDefault = () => mat(0x2a2538);
-  const matHope    = () => mat(0x0e2d47, 0x07131e);
-  const matFear    = () => mat(0x3d1010, 0x1a0707);
-
-  /* ═══════════════════════════════════════════════════
-     SPAWN ONE DIE
+     SPAWN A DIE
   ═══════════════════════════════════════════════════ */
   function spawnDie(geoType, proxy, visMat, offsetX, fastSpin) {
     const THREE  = window.THREE;
@@ -270,7 +404,7 @@
     mesh.receiveShadow = true;
     scene.add(mesh);
 
-    const body = new CANNON.Body({ mass: 1, material: dieMat });
+    const body = new CANNON.Body({ mass: 1, material: cannonDieMat });
     body.addShape(shape);
     body.position.set(
       offsetX + (Math.random() - 0.5) * 0.6,
@@ -287,14 +421,14 @@
     body.angularDamping = 0.2;
     body.linearDamping  = 0.15;
     world.addBody(body);
-
     return { mesh, body };
   }
 
   /* ═══════════════════════════════════════════════════
-     CLEAR PREVIOUS DICE
+     CLEAR DICE + LABELS
   ═══════════════════════════════════════════════════ */
   function clearDice() {
+    removeLabelSprites();
     [meshA, meshB].forEach(m => { if (m) { scene.remove(m); m.geometry.dispose(); } });
     [bodyA, bodyB].forEach(b => { if (b) world.remove(b); });
     meshA = meshB = bodyA = bodyB = null;
@@ -350,9 +484,8 @@
       const d = spawnDie(cfg.geo, cfg.proxy, matDefault(), 0, false);
       meshA = d.mesh; bodyA = d.body;
     }
-
     startLoop();
-    setTimeout(stopLoop, 1400);  // settle and freeze
+    setTimeout(stopLoop, 1400);
   }
 
   /* ═══════════════════════════════════════════════════
@@ -372,6 +505,7 @@
     rolling = true;
     rollBtn.classList.add('rolling');
     setResult('', '');
+    removeLabelSprites();
     playRollSound();
 
     const result = computeRoll(selectedDie);
@@ -393,7 +527,6 @@
     startLoop();
 
     setTimeout(() => {
-      // Brake to a stop
       [bodyA, bodyB].forEach(b => {
         if (b) { b.velocity.set(0,0,0); b.angularVelocity.set(0,0,0); }
       });
@@ -402,6 +535,19 @@
         stopLoop();
         rolling = false;
         rollBtn.classList.remove('rolling');
+
+        // Show number on / above the settled die
+        if (selectedDie === 'hopefear') {
+          labelSpriteA = showLabel(meshA, String(result.hope),  '#6bbde8');
+          labelSpriteB = showLabel(meshB, String(result.fear),  '#e07070');
+        } else {
+          const color = result.modifier === 'crit'   ? '#ffe066'
+                      : result.modifier === 'fumble' ? '#e07070'
+                      : '#f5f0e8';
+          labelSpriteA = showLabel(meshA, String(result.value), color);
+        }
+        renderer.render(scene, camera);
+
         const { label, modifier } = result;
         setResult(label, modifier);
         addHistory(label, modifier);
@@ -485,8 +631,25 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     GO
+     STREAMER MODE
   ═══════════════════════════════════════════════════ */
+  const streamerBtn = document.getElementById('streamerToggle');
+  const STREAMER_KEY = 'diceroller-streamer';
+
+  function setStreamerMode(on) {
+    document.body.classList.toggle('streamer-mode', on);
+    streamerBtn.classList.toggle('active', on);
+    streamerBtn.querySelector('.streamer-label').textContent = on ? 'Exit' : 'Streamer';
+    try { localStorage.setItem(STREAMER_KEY, on ? '1' : ''); } catch (_) {}
+  }
+
+  streamerBtn.addEventListener('click', () => {
+    setStreamerMode(!document.body.classList.contains('streamer-mode'));
+  });
+
+  // Restore preference across page loads
+  try { if (localStorage.getItem(STREAMER_KEY)) setStreamerMode(true); } catch (_) {}
+
   boot();
 
 })();
