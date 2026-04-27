@@ -1,0 +1,138 @@
+---
+layout: default
+title: Dice Roller
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dice Roller</title>
+  <link rel="stylesheet" href="/assets/dice-roller.css">
+</head>
+<body>
+  <main class="roller-main">
+    <h1 class="roller-title">Dice Roller</h1>
+
+    <div class="dice-selector">
+      <button class="die-btn" data-sides="2"  data-label="D2">D2</button>
+      <button class="die-btn" data-sides="3"  data-label="D3">D3</button>
+      <button class="die-btn" data-sides="4"  data-label="D4">D4</button>
+      <button class="die-btn" data-sides="5"  data-label="D5">D5</button>
+      <button class="die-btn" data-sides="6"  data-label="D6">D6</button>
+      <button class="die-btn" data-sides="7"  data-label="D7">D7</button>
+      <button class="die-btn" data-sides="8"  data-label="D8">D8</button>
+      <button class="die-btn" data-sides="10" data-label="D10">D10</button>
+      <button class="die-btn" data-sides="12" data-label="D12">D12</button>
+      <button class="die-btn" data-sides="14" data-label="D14">D14</button>
+      <button class="die-btn" data-sides="16" data-label="D16">D16</button>
+      <button class="die-btn" data-sides="20" data-label="D20">D20</button>
+      <button class="die-btn" data-sides="100" data-label="D100">D100</button>
+      <button class="die-btn hope-fear-btn" data-sides="hopefear" data-label="Hope & Fear">⚖ Hope &amp; Fear</button>
+    </div>
+
+    <div class="stage">
+      <div class="dice-scene" id="diceScene">
+        <div class="die-wrap" id="dieWrap">
+          <svg class="die-svg" id="dieSvg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+            <!-- D6 default face -->
+            <rect class="die-bg" x="10" y="10" width="100" height="100" rx="16"/>
+            <text class="die-face-num" id="dieFaceNum" x="60" y="74" text-anchor="middle">?</text>
+          </svg>
+          <!-- D2 coin shape -->
+          <svg class="die-svg" id="dieD2" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <ellipse class="die-bg" cx="60" cy="60" rx="50" ry="50"/>
+            <text class="die-face-num" id="dieD2Num" x="60" y="74" text-anchor="middle">?</text>
+          </svg>
+          <!-- D3 triangle -->
+          <svg class="die-svg die-poly" id="dieD3" viewBox="0 0 120 130" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,8 112,110 8,110"/>
+            <text class="die-face-num" id="dieD3Num" x="60" y="98" text-anchor="middle">?</text>
+          </svg>
+          <!-- D4 triangle -->
+          <svg class="die-svg die-poly" id="dieD4" viewBox="0 0 120 130" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,8 112,110 8,110"/>
+            <text class="die-face-num" id="dieD4Num" x="60" y="98" text-anchor="middle">?</text>
+          </svg>
+          <!-- D5 pentagon -->
+          <svg class="die-svg die-poly" id="dieD5" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,6 113,44 92,108 28,108 7,44"/>
+            <text class="die-face-num" id="dieD5Num" x="60" y="76" text-anchor="middle">?</text>
+          </svg>
+          <!-- D7 heptagon -->
+          <svg class="die-svg die-poly" id="dieD7" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,6 103,22 118,68 95,110 25,110 2,68 17,22"/>
+            <text class="die-face-num" id="dieD7Num" x="60" y="72" text-anchor="middle">?</text>
+          </svg>
+          <!-- D8 polygon -->
+          <svg class="die-svg die-poly" id="dieD8" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,6 114,60 60,114 6,60"/>
+            <text class="die-face-num" id="dieD8Num" x="60" y="68" text-anchor="middle">?</text>
+          </svg>
+          <!-- D10 polygon -->
+          <svg class="die-svg die-poly" id="dieD10" viewBox="0 0 120 130" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,6 110,40 110,90 60,124 10,90 10,40"/>
+            <text class="die-face-num" id="dieD10Num" x="60" y="76" text-anchor="middle">?</text>
+          </svg>
+          <!-- D12 polygon -->
+          <svg class="die-svg die-poly" id="dieD12" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,5 90,20 112,50 112,80 90,108 60,120 30,108 8,80 8,50 30,20"/>
+            <text class="die-face-num" id="dieD12Num" x="60" y="70" text-anchor="middle">?</text>
+          </svg>
+          <!-- D14 tetradecagon -->
+          <svg class="die-svg die-poly" id="dieD14" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,5 83,9 102,22 114,42 116,64 108,85 92,101 72,111 48,111 28,101 12,85 4,64 6,42 18,22 37,9"/>
+            <text class="die-face-num" id="dieD14Num" x="60" y="70" text-anchor="middle">?</text>
+          </svg>
+          <!-- D16 hexadecagon -->
+          <svg class="die-svg die-poly" id="dieD16" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,5 79,8 95,18 108,32 115,50 115,70 108,88 95,102 79,112 60,115 41,112 25,102 12,88 5,70 5,50 12,32 25,18 41,8"/>
+            <text class="die-face-num" id="dieD16Num" x="60" y="70" text-anchor="middle">?</text>
+          </svg>
+          <!-- D20 polygon -->
+          <svg class="die-svg die-poly" id="dieD20" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <polygon class="die-bg" points="60,5 106,30 115,80 85,115 35,115 5,80 14,30"/>
+            <text class="die-face-num" id="dieD20Num" x="60" y="72" text-anchor="middle">?</text>
+          </svg>
+          <!-- D100 circle -->
+          <svg class="die-svg" id="dieD100" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="display:none">
+            <circle class="die-bg" cx="60" cy="60" r="54"/>
+            <text class="die-face-num d100-num" id="dieD100Num" x="60" y="70" text-anchor="middle">?</text>
+          </svg>
+          <!-- Hope & Fear double die -->
+          <div class="hope-fear-wrap" id="dieHopeFear" style="display:none">
+            <svg class="die-svg hf-die hope-die" id="hopeSvg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+              <rect class="die-bg hope-bg" x="10" y="10" width="100" height="100" rx="14"/>
+              <text class="die-hf-label" x="60" y="34" text-anchor="middle">Hope</text>
+              <text class="die-face-num" id="hopeNum" x="60" y="80" text-anchor="middle">?</text>
+            </svg>
+            <svg class="die-svg hf-die fear-die" id="fearSvg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+              <rect class="die-bg fear-bg" x="10" y="10" width="100" height="100" rx="14"/>
+              <text class="die-hf-label" x="60" y="34" text-anchor="middle">Fear</text>
+              <text class="die-face-num" id="fearNum" x="60" y="80" text-anchor="middle">?</text>
+            </svg>
+          </div>
+        </div>
+
+        <div class="roll-result" id="rollResult"></div>
+      </div>
+
+      <button class="roll-btn" id="rollBtn" disabled>
+        <span class="roll-btn-label">Select a die</span>
+      </button>
+    </div>
+
+    <div class="history-section">
+      <div class="history-header">
+        <span class="history-title">Roll History</span>
+        <button class="clear-btn" id="clearBtn">Clear</button>
+      </div>
+      <div class="history-log" id="historyLog">
+        <span class="history-empty">No rolls yet</span>
+      </div>
+    </div>
+  </main>
+
+  <script src="/assets/dice-roller.js"></script>
+</body>
+</html>

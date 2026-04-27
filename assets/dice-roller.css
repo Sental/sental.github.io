@@ -1,0 +1,326 @@
+/* dice-roller.css */
+/* Place this in /assets/dice-roller.css */
+
+:root {
+  --clr-bg: #0e0e14;
+  --clr-surface: #18181f;
+  --clr-surface2: #22222d;
+  --clr-border: rgba(255,255,255,0.08);
+  --clr-accent: #c5973a;
+  --clr-accent2: #e8c069;
+  --clr-hope: #3a8fc5;
+  --clr-fear: #a83535;
+  --clr-text: #ede8df;
+  --clr-text-muted: #8a8578;
+  --clr-die-fill: #2a2538;
+  --clr-die-stroke: #7a6caa;
+  --clr-die-num: #ede8df;
+  --clr-outcome-hope: #6bbde8;
+  --clr-outcome-fear: #e07070;
+  --radius: 16px;
+  --shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background-color: var(--clr-bg);
+  font-family: "Fira Sans", "Segoe UI", sans-serif;
+  color: var(--clr-text);
+  min-height: 100vh;
+  background-image: url(/img/DnD_Starter_Art.jpg);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-blend-mode: overlay;
+}
+
+.roller-main {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.roller-title {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--clr-accent2);
+  text-shadow: 0 2px 16px rgba(0,0,0,0.7);
+  margin-bottom: 1.75rem;
+}
+
+/* --- Die selector buttons --- */
+.dice-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.die-btn {
+  background: var(--clr-surface);
+  border: 1.5px solid var(--clr-border);
+  color: var(--clr-text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.5rem 1.1rem;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+  min-width: 64px;
+}
+
+.die-btn:hover {
+  background: var(--clr-surface2);
+  border-color: var(--clr-accent);
+  color: var(--clr-accent2);
+}
+
+.die-btn.active {
+  background: rgba(197,151,58,0.18);
+  border-color: var(--clr-accent2);
+  color: var(--clr-accent2);
+  box-shadow: 0 0 10px rgba(197,151,58,0.25);
+}
+
+.hope-fear-btn { min-width: auto; }
+
+/* --- Stage --- */
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 2.5rem;
+}
+
+.dice-scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  min-height: 160px;
+}
+
+.die-wrap {
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 500px;
+}
+
+/* SVG die shapes */
+.die-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 4px 18px rgba(0,0,0,0.7));
+  transition: filter 0.2s;
+}
+
+.die-bg {
+  fill: var(--clr-die-fill);
+  stroke: var(--clr-die-stroke);
+  stroke-width: 2.5;
+}
+
+.hope-bg { fill: #12203a; stroke: var(--clr-hope); }
+.fear-bg { fill: #2a1212; stroke: var(--clr-fear); }
+
+.die-face-num {
+  fill: var(--clr-die-num);
+  font-family: "Fira Sans", "Segoe UI", sans-serif;
+  font-size: 44px;
+  font-weight: 800;
+  dominant-baseline: auto;
+}
+
+.d100-num {
+  font-size: 30px;
+}
+
+.die-hf-label {
+  fill: var(--clr-text-muted);
+  font-family: "Fira Sans", sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  dominant-baseline: middle;
+  text-transform: uppercase;
+}
+
+/* Hope & Fear layout */
+.hope-fear-wrap {
+  width: 280px;
+  height: 140px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.hf-die {
+  width: 134px;
+  height: 134px;
+  flex-shrink: 0;
+}
+
+/* --- Roll animation keyframes --- */
+@keyframes rollSpin {
+  0%   { transform: rotate(0deg) scale(1); }
+  20%  { transform: rotate(-30deg) scale(1.08); }
+  50%  { transform: rotate(200deg) scale(0.92); }
+  80%  { transform: rotate(340deg) scale(1.05); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes rollBounce {
+  0%   { transform: translateY(0) scaleX(1); }
+  30%  { transform: translateY(-22px) scaleX(0.97); }
+  55%  { transform: translateY(4px) scaleX(1.03); }
+  75%  { transform: translateY(-9px) scaleX(0.99); }
+  90%  { transform: translateY(2px) scaleX(1.01); }
+  100% { transform: translateY(0) scaleX(1); }
+}
+
+@keyframes flashIn {
+  0%   { opacity: 0; transform: scale(0.7); }
+  60%  { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.die-wrap.rolling .die-svg {
+  animation: rollSpin 0.65s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
+             rollBounce 0.65s ease-out forwards;
+}
+.die-wrap.rolling .hope-fear-wrap .hf-die:first-child {
+  animation: rollSpin 0.65s 0s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+.die-wrap.rolling .hope-fear-wrap .hf-die:last-child {
+  animation: rollSpin 0.65s 0.08s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.die-face-num.revealed {
+  animation: flashIn 0.28s ease-out forwards;
+}
+
+/* --- Result line --- */
+.roll-result {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  min-height: 2rem;
+  text-align: center;
+  color: var(--clr-accent2);
+  text-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.roll-result.visible { opacity: 1; }
+.roll-result.hope { color: var(--clr-outcome-hope); }
+.roll-result.fear { color: var(--clr-outcome-fear); }
+
+/* --- Roll button --- */
+.roll-btn {
+  background: linear-gradient(135deg, #a0762a 0%, #d4a84b 100%);
+  border: none;
+  border-radius: 14px;
+  color: #1a1205;
+  font-family: inherit;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  padding: 0.85rem 3rem;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(197,151,58,0.35);
+  transition: transform 0.1s, box-shadow 0.1s, opacity 0.15s;
+  text-transform: uppercase;
+}
+
+.roll-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(197,151,58,0.45);
+}
+.roll-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 2px 10px rgba(197,151,58,0.2);
+}
+.roll-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.roll-btn.rolling {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* --- History --- */
+.history-section {
+  background: rgba(14,14,20,0.75);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.1rem;
+  border-bottom: 1px solid var(--clr-border);
+}
+
+.history-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--clr-text-muted);
+}
+
+.clear-btn {
+  background: none;
+  border: 1px solid var(--clr-border);
+  border-radius: 6px;
+  color: var(--clr-text-muted);
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.65rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.clear-btn:hover { border-color: var(--clr-fear); color: var(--clr-outcome-fear); }
+
+.history-log {
+  padding: 0.75rem 1.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.history-empty {
+  color: var(--clr-text-muted);
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+.history-chip {
+  background: var(--clr-surface2);
+  border: 1px solid var(--clr-border);
+  border-radius: 8px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--clr-text);
+  white-space: nowrap;
+  animation: flashIn 0.2s ease-out;
+}
+.history-chip.hope { border-color: var(--clr-hope); color: var(--clr-outcome-hope); }
+.history-chip.fear { border-color: var(--clr-fear); color: var(--clr-outcome-fear); }
