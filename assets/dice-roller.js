@@ -18,11 +18,12 @@
   /* ═══════════════════════════════════════════════════
      CONFIG
   ═══════════════════════════════════════════════════ */
-  const ROLL_MS   = 2600;
-  const SETTLE_MS = 400;
-  const SIZE      = 280;
-  const TRAY      = 3.2;
-  const FLOOR_Y   = -2.0;
+  const MAX_ROLL_MS  = 4000;  // max wait before we force-settle
+  const SETTLE_MS    = 600;   // pause after motion stops before showing number
+  const SIZE         = 280;
+  const TRAY         = 5.5;   // wider tray = more room to tumble
+  const FLOOR_Y      = -2.2;
+  const SUBSTEPS     = 5;     // physics substeps per frame for accuracy
 
   const DIE_CONFIG = {
     '2':        { geo: 'cylinder', proxy: 32  },
@@ -131,14 +132,19 @@
   function setupCannon() {
     const CANNON = window.CANNON;
     world = new CANNON.World();
-    world.gravity.set(0, -30, 0);
+    world.gravity.set(0, -50, 0);   // stronger gravity = snappier settle
     world.broadphase = new CANNON.NaiveBroadphase();
-    world.solver.iterations = 20;
+    world.solver.iterations = 40;   // more iterations = more stable contacts
 
     const groundMat = new CANNON.Material('ground');
     cannonDieMat    = new CANNON.Material('die');
     world.addContactMaterial(new CANNON.ContactMaterial(groundMat, cannonDieMat, {
-      friction: 0.35, restitution: 0.35,
+      friction:    0.6,    // high friction = rolling not sliding
+      restitution: 0.25,   // low restitution = bounce dies out quickly
+    }));
+    // die-vs-die contact (hopefear)
+    world.addContactMaterial(new CANNON.ContactMaterial(cannonDieMat, cannonDieMat, {
+      friction: 0.4, restitution: 0.2,
     }));
 
     const floor = new CANNON.Body({ mass: 0, material: groundMat });
@@ -159,6 +165,13 @@
       b.quaternion.setFromAxisAngle(new CANNON.Vec3(...w.ax), w.ang);
       world.addBody(b);
     });
+
+    // Ceiling — stops dice flying off the top
+    const ceil = new CANNON.Body({ mass: 0, material: groundMat });
+    ceil.addShape(new CANNON.Plane());
+    ceil.position.set(0, 7, 0);
+    ceil.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), Math.PI/2);
+    world.addBody(ceil);
   }
 
   /* ═══════════════════════════════════════════════════
@@ -423,20 +436,44 @@
 
     const body = new CANNON.Body({ mass: 1, material: cannonDieMat });
     body.addShape(shape);
+
+    // Start high and slightly off-centre so it tumbles on landing
     body.position.set(
-      offsetX + (Math.random() - 0.5) * 0.6,
-      4.5 + Math.random(),
-      (Math.random() - 0.5) * 0.6
+      offsetX + (Math.random() - 0.5) * 1.5,
+      5.5 + Math.random() * 1.5,
+      (Math.random() - 0.5) * 1.5
     );
-    const spin = fastSpin ? 40 : 14;
-    body.angularVelocity.set(
-      (Math.random() - 0.5) * spin,
-      (Math.random() - 0.5) * spin,
-      (Math.random() - 0.5) * spin
-    );
-    body.velocity.set((Math.random()-0.5)*3, -3, (Math.random()-0.5)*3);
-    body.angularDamping = 0.2;
-    body.linearDamping  = 0.15;
+
+    if (fastSpin) {
+      // Vigorous throw: strong horizontal velocity + furious spin
+      const dir = Math.random() * Math.PI * 2;
+      body.velocity.set(
+        Math.cos(dir) * (6 + Math.random() * 4),
+        -(3 + Math.random() * 2),
+        Math.sin(dir) * (6 + Math.random() * 4)
+      );
+      body.angularVelocity.set(
+        (Math.random() - 0.5) * 60,
+        (Math.random() - 0.5) * 60,
+        (Math.random() - 0.5) * 60
+      );
+    } else {
+      // Preview: gentle drop with mild tumble
+      body.velocity.set(
+        (Math.random() - 0.5) * 1.5,
+        -2,
+        (Math.random() - 0.5) * 1.5
+      );
+      body.angularVelocity.set(
+        (Math.random() - 0.5) * 8,
+        (Math.random() - 0.5) * 8,
+        (Math.random() - 0.5) * 8
+      );
+    }
+
+    // Low damping — let physics + friction do the work
+    body.angularDamping = 0.04;
+    body.linearDamping  = 0.04;
     world.addBody(body);
     return { mesh, body };
   }
@@ -454,11 +491,17 @@
   /* ═══════════════════════════════════════════════════
      RENDER LOOP
   ═══════════════════════════════════════════════════ */
+  let lastTime = null;
+
   function startLoop() {
     if (rafId) cancelAnimationFrame(rafId);
-    (function tick() {
+    lastTime = null;
+    (function tick(now) {
       rafId = requestAnimationFrame(tick);
-      world.step(1 / 60);
+      const dt = lastTime ? Math.min((now - lastTime) / 1000, 1/30) : 1/60;
+      lastTime = now;
+      // Multiple substeps per frame keeps fast-moving dice stable
+      world.step(1 / 60, dt, SUBSTEPS);
       if (meshA && bodyA) { meshA.position.copy(bodyA.position); meshA.quaternion.copy(bodyA.quaternion); }
       if (meshB && bodyB) { meshB.position.copy(bodyB.position); meshB.quaternion.copy(bodyB.quaternion); }
       renderer.render(scene, camera);
@@ -543,35 +586,66 @@
 
     startLoop();
 
-    setTimeout(() => {
-      [bodyA, bodyB].forEach(b => {
-        if (b) { b.velocity.set(0,0,0); b.angularVelocity.set(0,0,0); }
+    // Settle detection: watch velocity rather than using a fixed timer
+    const rollStart = performance.now();
+    let settleTimer = null;
+
+    function checkSettled() {
+      if (!rolling) return;
+
+      const elapsed = performance.now() - rollStart;
+      const bodies  = [bodyA, bodyB].filter(Boolean);
+
+      const allSlow = bodies.every(b => {
+        const lv = b.velocity;
+        const av = b.angularVelocity;
+        const linSpd = Math.sqrt(lv.x*lv.x + lv.y*lv.y + lv.z*lv.z);
+        const angSpd = Math.sqrt(av.x*av.x + av.y*av.y + av.z*av.z);
+        return linSpd < 0.4 && angSpd < 0.4;
       });
 
-      setTimeout(() => {
-        stopLoop();
-        rolling = false;
-        rollBtn.classList.remove('rolling');
-
-        // Show number on / above the settled die
-        if (selectedDie === 'hopefear') {
-          labelSpriteA = showLabel(meshA, String(result.hope),  '#6bbde8');
-          labelSpriteB = showLabel(meshB, String(result.fear),  '#e07070');
-        } else {
-          const color = result.modifier === 'crit'   ? '#ffe066'
-                      : result.modifier === 'fumble' ? '#e07070'
-                      : '#f5f0e8';
-          labelSpriteA = showLabel(meshA, String(result.value), color);
+      if (allSlow && elapsed > 800) {
+        // Die has genuinely stopped — wait a beat then show result
+        if (!settleTimer) {
+          settleTimer = setTimeout(finishRoll, SETTLE_MS);
         }
-        renderer.render(scene, camera);
+      } else {
+        // Still moving — cancel any pending settle and keep checking
+        if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
+        // Force-settle after max time regardless
+        if (elapsed < MAX_ROLL_MS) {
+          requestAnimationFrame(checkSettled);
+        } else {
+          // Hard brake then finish
+          bodies.forEach(b => { b.velocity.set(0,0,0); b.angularVelocity.set(0,0,0); });
+          setTimeout(finishRoll, SETTLE_MS);
+        }
+      }
+    }
 
-        const { label, modifier } = result;
-        setResult(label, modifier);
-        addHistory(label, modifier);
-        setTimeout(() => speakResult(result), 200);
-      }, SETTLE_MS);
+    function finishRoll() {
+      stopLoop();
+      rolling = false;
+      rollBtn.classList.remove('rolling');
 
-    }, ROLL_MS);
+      if (selectedDie === 'hopefear') {
+        labelSpriteA = showLabel(meshA, String(result.hope),  '#6bbde8');
+        labelSpriteB = showLabel(meshB, String(result.fear),  '#e07070');
+      } else {
+        const color = result.modifier === 'crit'   ? '#ffe066'
+                    : result.modifier === 'fumble' ? '#e07070'
+                    : '#f5f0e8';
+        labelSpriteA = showLabel(meshA, String(result.value), color);
+      }
+      renderer.render(scene, camera);
+
+      const { label, modifier } = result;
+      setResult(label, modifier);
+      addHistory(label, modifier);
+      setTimeout(() => speakResult(result), 200);
+    }
+
+    requestAnimationFrame(checkSettled);
   }
 
   /* ═══════════════════════════════════════════════════
