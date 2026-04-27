@@ -245,64 +245,64 @@
     const THREE  = window.THREE;
     const CANNON = window.CANNON;
 
-    const n   = 5;         // pentagonal
-    const r   = 1.1;       // equatorial radius
-    const top = 1.3;       // apex height
-    const bot = -1.3;
-    const eq  = 0.22;      // equatorial band height offset
-    const twist = Math.PI / n;   // half-step twist between upper/lower ring
+    const n     = 5;
+    const r     = 1.15;        // equatorial radius
+    const topY  =  1.35;       // top apex
+    const botY  = -1.35;       // bottom apex
+    const upY   =  0.25;       // upper ring height
+    const loY   = -0.25;       // lower ring height
+    const twist = Math.PI / n; // half-turn twist between rings
 
-    // Vertices:
-    //  0        = top apex
-    //  1..5     = upper ring  (angled at +eq)
-    //  6..10    = lower ring  (angled at -eq, twisted by twist)
-    //  11       = bottom apex
-    const verts = [];
-    verts.push(new THREE.Vector3(0, top, 0));  // 0
-
+    // 12 unique vertices
+    // 0 = top apex, 1-5 = upper ring, 6-10 = lower ring, 11 = bottom apex
+    const V = [];
+    V.push(new THREE.Vector3(0, topY, 0)); // 0
     for (let i = 0; i < n; i++) {
       const a = (2 * Math.PI * i) / n;
-      verts.push(new THREE.Vector3(r * Math.cos(a), eq, r * Math.sin(a)));  // 1-5
+      V.push(new THREE.Vector3(r * Math.cos(a), upY, r * Math.sin(a))); // 1-5
     }
     for (let i = 0; i < n; i++) {
       const a = (2 * Math.PI * i) / n + twist;
-      verts.push(new THREE.Vector3(r * Math.cos(a), -eq, r * Math.sin(a))); // 6-10
+      V.push(new THREE.Vector3(r * Math.cos(a), loY, r * Math.sin(a))); // 6-10
     }
-    verts.push(new THREE.Vector3(0, bot, 0));  // 11
+    V.push(new THREE.Vector3(0, botY, 0)); // 11
 
-    // 10 kite faces: each face = top-apex OR bot-apex + two upper + two lower ring verts
-    // Upper kites (top apex, upper[i], lower[i], upper[i+1])
-    // Lower kites (bot apex, lower[i], upper[i+1], lower[i+1])
-    const faces = [];
+    // Helper: compute outward normal for a triangle, flip if pointing inward
+    function triNormal(a, b, c) {
+      const ab  = new THREE.Vector3().subVectors(b, a);
+      const ac  = new THREE.Vector3().subVectors(c, a);
+      const nor = new THREE.Vector3().crossVectors(ab, ac).normalize();
+      // centroid of this face
+      const cen = new THREE.Vector3()
+        .addVectors(a, b).add(c).multiplyScalar(1 / 3);
+      // if normal points toward origin, flip it
+      if (nor.dot(cen) < 0) nor.negate();
+      return nor;
+    }
+
+    // Each kite = 2 triangles
+    // Upper kite i: apex(0), upper[i], lower[i], upper[i+1]
+    // Lower kite i: apex(11), lower[i], upper[i+1], lower[i+1]
+    const tris = [];
     for (let i = 0; i < n; i++) {
-      const u0 = 1 + i;
-      const u1 = 1 + (i + 1) % n;
-      const l0 = 6 + i;
-      const l1 = 6 + (i + 1) % n;
-      // Upper kite — split into 2 triangles
-      faces.push([0,  u0, l0]);
-      faces.push([0,  l0, u1]);
-      // Lower kite
-      faces.push([11, l0, u1]);
-      faces.push([11, u1, l1]);
+      const u0 = 1 + i, u1 = 1 + (i + 1) % n;
+      const l0 = 6 + i, l1 = 6 + (i + 1) % n;
+      tris.push([0,  u0, l0]);
+      tris.push([0,  l0, u1]);
+      tris.push([11, u1, l0]);
+      tris.push([11, l1, u1]);
     }
 
-    // Build BufferGeometry from triangles
     const positions = [];
     const normals   = [];
     const uvs       = [];
 
-    faces.forEach(([a, b, c]) => {
-      const va = verts[a], vb = verts[b], vc = verts[c];
-      [va, vb, vc].forEach(v => positions.push(v.x, v.y, v.z));
-
-      // Flat normal
-      const ab = new THREE.Vector3().subVectors(vb, va);
-      const ac = new THREE.Vector3().subVectors(vc, va);
-      const n3 = new THREE.Vector3().crossVectors(ab, ac).normalize();
-      for (let k = 0; k < 3; k++) normals.push(n3.x, n3.y, n3.z);
-
-      uvs.push(0,0, 1,0, 0.5,1);
+    tris.forEach(([ai, bi, ci]) => {
+      const va = V[ai], vb = V[bi], vc = V[ci];
+      positions.push(va.x, va.y, va.z, vb.x, vb.y, vb.z, vc.x, vc.y, vc.z);
+      const nor = triNormal(va, vb, vc);
+      for (let k = 0; k < 3; k++) normals.push(nor.x, nor.y, nor.z);
+      uvs.push(0, 0,  1, 0,  0.5, 1);
     });
 
     const geo = new THREE.BufferGeometry();
@@ -310,16 +310,9 @@
     geo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals,   3));
     geo.setAttribute('uv',       new THREE.Float32BufferAttribute(uvs,       2));
 
-    // Cannon convex hull from unique verts
-    const cVerts = verts.map(v => new CANNON.Vec3(v.x, v.y, v.z));
-    const cFaces = [];
-    for (let i = 0; i < n; i++) {
-      const u0 = 1 + i, u1 = 1 + (i+1)%n;
-      const l0 = 6 + i, l1 = 6 + (i+1)%n;
-      cFaces.push([0, u0, l0], [0, l0, u1]);
-      cFaces.push([11, l0, u1], [11, u1, l1]);
-    }
-    const cannon = new CANNON.ConvexPolyhedron(cVerts, cFaces);
+    // Cannon convex hull — just needs the unique vertex cloud
+    const cVerts = V.map(v => new CANNON.Vec3(v.x, v.y, v.z));
+    const cannon  = new CANNON.ConvexPolyhedron(cVerts, tris.map(t => [...t]));
 
     return { three: geo, cannon };
   }
@@ -361,11 +354,16 @@
   }
 
   function convexPair(bufGeo) {
+    const THREE  = window.THREE;
     const CANNON = window.CANNON;
-    const pos    = bufGeo.attributes.position;
-    const vMap   = new Map();
-    const verts  = [];
-    const faces  = [];
+
+    // Let Three.js compute reliable outward-facing normals from the geometry
+    bufGeo.computeVertexNormals();
+
+    const pos  = bufGeo.attributes.position;
+    const vMap = new Map();
+    const verts = [];
+    const faces = [];
 
     function vid(i) {
       const x = +pos.getX(i).toFixed(4);
@@ -380,14 +378,33 @@
     if (idx) {
       for (let i = 0; i < idx.count; i += 3) {
         const a = vid(idx.getX(i)), b = vid(idx.getX(i+1)), c = vid(idx.getX(i+2));
-        if (a !== b && b !== c && a !== c) faces.push([a, b, c]);
+        if (a !== b && b !== c && a !== c) {
+          // Verify winding produces an outward normal before adding to Cannon
+          const va = verts[a], vb = verts[b], vc = verts[c];
+          const ab = new CANNON.Vec3(vb.x-va.x, vb.y-va.y, vb.z-va.z);
+          const ac = new CANNON.Vec3(vc.x-va.x, vc.y-va.y, vc.z-va.z);
+          const nor = ab.cross(ac);
+          const cen = new CANNON.Vec3((va.x+vb.x+vc.x)/3, (va.y+vb.y+vc.y)/3, (va.z+vb.z+vc.z)/3);
+          // dot < 0 means normal points inward — swap b and c to flip
+          if (nor.dot(cen) < 0) faces.push([a, c, b]);
+          else                   faces.push([a, b, c]);
+        }
       }
     } else {
       for (let i = 0; i < pos.count; i += 3) {
         const a = vid(i), b = vid(i+1), c = vid(i+2);
-        if (a !== b && b !== c && a !== c) faces.push([a, b, c]);
+        if (a !== b && b !== c && a !== c) {
+          const va = verts[a], vb = verts[b], vc = verts[c];
+          const ab = new CANNON.Vec3(vb.x-va.x, vb.y-va.y, vb.z-va.z);
+          const ac = new CANNON.Vec3(vc.x-va.x, vc.y-va.y, vc.z-va.z);
+          const nor = ab.cross(ac);
+          const cen = new CANNON.Vec3((va.x+vb.x+vc.x)/3, (va.y+vb.y+vc.y)/3, (va.z+vb.z+vc.z)/3);
+          if (nor.dot(cen) < 0) faces.push([a, c, b]);
+          else                   faces.push([a, b, c]);
+        }
       }
     }
+
     return { three: bufGeo, cannon: new CANNON.ConvexPolyhedron(verts, faces) };
   }
 
