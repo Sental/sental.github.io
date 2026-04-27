@@ -473,7 +473,7 @@
   }
   function playRollSound() {
     try {
-      const a = getAudio('/assets/dice.mp3');
+      const a = getAudio('/assets/dice-roll.mp3');
       a.currentTime = 0;
       const p = a.play();
       if (p) p.then(() => setTimeout(() => { a.pause(); a.currentTime = 0; }, 900)).catch(() => {});

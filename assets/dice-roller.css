@@ -2,7 +2,7 @@
 /* Place this in /assets/dice-roller.css */
 
 :root {
-  --clr-bg: #7d7dda;
+  --clr-bg: #0e0e14;
   --clr-surface: #18181f;
   --clr-surface2: #22222d;
   --clr-border: rgba(255,255,255,0.08);
@@ -108,105 +108,20 @@ body {
 }
 
 .die-wrap {
-  width: 140px;
-  height: 140px;
+  width: 280px;
+  height: 280px;
   display: flex;
   align-items: center;
   justify-content: center;
-  perspective: 500px;
 }
 
-/* SVG die shapes */
-.die-svg {
-  width: 100%;
-  height: 100%;
-  filter: drop-shadow(0 4px 18px rgba(0,0,0,0.7));
-  transition: filter 0.2s;
+.canvas-placeholder {
+  color: var(--clr-text-muted);
+  font-size: 0.95rem;
+  font-style: italic;
 }
 
-.die-bg {
-  fill: var(--clr-die-fill);
-  stroke: var(--clr-die-stroke);
-  stroke-width: 2.5;
-}
-
-.hope-bg { fill: #12203a; stroke: var(--clr-hope); }
-.fear-bg { fill: #2a1212; stroke: var(--clr-fear); }
-
-.die-face-num {
-  fill: var(--clr-die-num);
-  font-family: "Fira Sans", "Segoe UI", sans-serif;
-  font-size: 44px;
-  font-weight: 800;
-  dominant-baseline: auto;
-}
-
-.d100-num {
-  font-size: 30px;
-}
-
-.die-hf-label {
-  fill: var(--clr-text-muted);
-  font-family: "Fira Sans", sans-serif;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  dominant-baseline: middle;
-  text-transform: uppercase;
-}
-
-/* Hope & Fear layout */
-.hope-fear-wrap {
-  width: 280px;
-  height: 140px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-.hf-die {
-  width: 134px;
-  height: 134px;
-  flex-shrink: 0;
-}
-
-/* --- Roll animation keyframes --- */
-@keyframes rollSpin {
-  0%   { transform: rotate(0deg) scale(1); }
-  20%  { transform: rotate(-30deg) scale(1.08); }
-  50%  { transform: rotate(200deg) scale(0.92); }
-  80%  { transform: rotate(340deg) scale(1.05); }
-  100% { transform: rotate(360deg) scale(1); }
-}
-
-@keyframes rollBounce {
-  0%   { transform: translateY(0) scaleX(1); }
-  30%  { transform: translateY(-22px) scaleX(0.97); }
-  55%  { transform: translateY(4px) scaleX(1.03); }
-  75%  { transform: translateY(-9px) scaleX(0.99); }
-  90%  { transform: translateY(2px) scaleX(1.01); }
-  100% { transform: translateY(0) scaleX(1); }
-}
-
-@keyframes flashIn {
-  0%   { opacity: 0; transform: scale(0.7); }
-  60%  { opacity: 1; transform: scale(1.12); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-.die-wrap.rolling .die-svg {
-  animation: rollSpin 0.65s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards,
-             rollBounce 0.65s ease-out forwards;
-}
-.die-wrap.rolling .hope-fear-wrap .hf-die:first-child {
-  animation: rollSpin 0.65s 0s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-}
-.die-wrap.rolling .hope-fear-wrap .hf-die:last-child {
-  animation: rollSpin 0.65s 0.08s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-}
-
-.die-face-num.revealed {
-  animation: flashIn 0.28s ease-out forwards;
-}
+/* SVG die styles removed — replaced by Three.js WebGL canvas */
 
 /* --- Result line --- */
 .roll-result {
@@ -221,8 +136,10 @@ body {
   transition: opacity 0.25s;
 }
 .roll-result.visible { opacity: 1; }
-.roll-result.hope { color: var(--clr-outcome-hope); }
-.roll-result.fear { color: var(--clr-outcome-fear); }
+.roll-result.hope   { color: var(--clr-outcome-hope); }
+.roll-result.fear   { color: var(--clr-outcome-fear); }
+.roll-result.crit   { color: #ffe066; text-shadow: 0 0 12px rgba(255,220,50,0.6); }
+.roll-result.fumble { color: #e07070; }
 
 /* --- Roll button --- */
 .roll-btn {
@@ -322,5 +239,7 @@ body {
   white-space: nowrap;
   animation: flashIn 0.2s ease-out;
 }
-.history-chip.hope { border-color: var(--clr-hope); color: var(--clr-outcome-hope); }
-.history-chip.fear { border-color: var(--clr-fear); color: var(--clr-outcome-fear); }
+.history-chip.hope   { border-color: var(--clr-hope); color: var(--clr-outcome-hope); }
+.history-chip.fear   { border-color: var(--clr-fear); color: var(--clr-outcome-fear); }
+.history-chip.crit   { border-color: #ffe066; color: #ffe066; }
+.history-chip.fumble { border-color: var(--clr-fear); color: var(--clr-outcome-fear); }
