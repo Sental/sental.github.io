@@ -233,6 +233,20 @@ function createD10Assets(radius = 1, height = 1.5) {
 
     // --- 2. Create Three.js Geometry ---
     // (Indices calculation omitted for brevity - see previous steps)
+    const indices = [
+        // Top Half (Connecting Pole 0)
+        0, 2, 7,    0, 7, 3,  // Kite 1
+        0, 3, 8,    0, 8, 4,  // Kite 2
+        0, 4, 9,    0, 9, 5,  // Kite 3
+        0, 5, 10,   0, 10, 6, // Kite 4
+        0, 6, 11,   0, 11, 2, // Kite 5
+        // Bottom Half (Connecting Pole 1)
+        1, 8, 3,    1, 3, 7,  // Kite 6
+        1, 9, 4,    1, 4, 8,  // Kite 7
+        1, 10, 5,   1, 5, 9,  // Kite 8
+        1, 11, 6,   1, 6, 10, // Kite 9
+        1, 7, 2,    1, 2, 11  // Kite 10
+    ];
     let threeGeo = new THREE.PolyhedronGeometry(vertices, indices, radius, 0);
     
     // --- 3. Convert to Cannon.js Shape ---
