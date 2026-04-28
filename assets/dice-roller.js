@@ -1,97 +1,72 @@
 /**
- * dice-roller.js  —  3D physics dice with Three.js + Cannon.js
- *
- * Key design: visual mesh (pretty) and physics body (simple primitive) are SEPARATE.
- * Cannon.js ConvexPolyhedron is unreliable for custom shapes — we use only
- * Box, Sphere, and Cylinder for physics, which are rock-solid.
- * The visual mesh just copies the physics body's position/quaternion each frame.
+ * dice-roller.js
+ * Three.js visuals + scripted roll animation. No physics engine.
+ * The die follows a hand-crafted arc: thrown across the table, bounces
+ * with decreasing height, spins fast then decelerates, lands naturally.
  */
 
 (function () {
   'use strict';
 
-  /* ═══════════════════════════════════════════════════
-     CONFIG
-  ═══════════════════════════════════════════════════ */
-  const SIZE        = 280;
-  const FLOOR_Y     = -1.8;
-  const WALL        = 4.0;
-  const MAX_ROLL_MS = 5000;
-  const MIN_ROLL_MS = 1800;   // die must roll for at least this long
-  const SETTLE_MS   = 500;    // pause after settling before showing number
-  const SUBSTEPS    = 8;
-
-  /*
-   * For each die type:
-   *   visGeo  — Three.js geometry (beautiful)
-   *   physGeo — what Cannon.js actually simulates ('box'|'sphere'|'cylinder'|'convex')
-   *   physArgs — args for the physics shape
-   */
+  /* ─── geometry definitions ───────────────────────── */
   const DIE_DEFS = {
-    // phys: box settles cleanly on a face; sphere never stops on a plane
-    '2':        { visGeo: 'cylinder32', phys: 'cylinder', physArgs: [0.9, 0.9, 0.35, 32] },
-    '3':        { visGeo: 'tetra',      phys: 'box',      physArgs: [0.72, 0.72, 0.72]  },
-    '4':        { visGeo: 'tetra',      phys: 'box',      physArgs: [0.72, 0.72, 0.72]  },
-    '5':        { visGeo: 'cylinder5',  phys: 'cylinder', physArgs: [0.9, 0.9, 0.55, 5] },
-    '6':        { visGeo: 'box',        phys: 'box',      physArgs: [0.85, 0.85, 0.85]  },
-    '7':        { visGeo: 'cylinder7',  phys: 'cylinder', physArgs: [0.9, 0.9, 0.55, 7] },
-    '8':        { visGeo: 'octa',       phys: 'box',      physArgs: [0.78, 0.78, 0.78]  },
-    '10':       { visGeo: 'd10',        phys: 'cylinder', physArgs: [0.85, 0.3, 1.15, 5]},
-    '12':       { visGeo: 'dodeca',     phys: 'box',      physArgs: [0.82, 0.82, 0.82]  },
-    '14':       { visGeo: 'octa',       phys: 'box',      physArgs: [0.78, 0.78, 0.78]  },
-    '16':       { visGeo: 'icosa',      phys: 'box',      physArgs: [0.82, 0.82, 0.82]  },
-    '20':       { visGeo: 'icosa',      phys: 'box',      physArgs: [0.82, 0.82, 0.82]  },
-    '100':      { visGeo: 'sphere',     phys: 'box',      physArgs: [0.82, 0.82, 0.82]  },
-    'hopefear': { visGeo: 'box',        phys: 'box',      physArgs: [0.85, 0.85, 0.85]  },
+    '2':        'cylinder32',
+    '3':        'tetra',
+    '4':        'tetra',
+    '5':        'cylinder5',
+    '6':        'box',
+    '7':        'cylinder7',
+    '8':        'octa',
+    '10':       'd10',
+    '12':       'dodeca',
+    '14':       'octa',
+    '16':       'icosa',
+    '20':       'icosa',
+    '100':      'sphere',
+    'hopefear': 'box',
   };
 
-  /* ═══════════════════════════════════════════════════
-     STATE
-  ═══════════════════════════════════════════════════ */
+  const SIZE    = 280;
+  const FLOOR_Y = -1.5;   // y position of the table surface in 3D space
+
+  /* ─── state ──────────────────────────────────────── */
   let selectedDie = null;
   let rolling     = false;
   let rafId       = null;
-  let lastTime    = null;
-  let scene, camera, renderer, world, groundMat, dieMat;
-  let meshA, bodyA, meshB, bodyB;
+  let scene, camera, renderer;
+  let meshA, meshB;
   let spriteA = null, spriteB = null;
 
-  /* ═══════════════════════════════════════════════════
-     DOM
-  ═══════════════════════════════════════════════════ */
+  /* ─── DOM ────────────────────────────────────────── */
   const rollBtn    = document.getElementById('rollBtn');
   const rollResult = document.getElementById('rollResult');
   const historyLog = document.getElementById('historyLog');
   const clearBtn   = document.getElementById('clearBtn');
   const dieWrap    = document.getElementById('dieWrap');
 
-  /* ═══════════════════════════════════════════════════
-     BOOT
-  ═══════════════════════════════════════════════════ */
+  /* ─── boot ───────────────────────────────────────── */
   function boot() {
-    if (!window.THREE || !window.CANNON) { setTimeout(boot, 50); return; }
+    if (!window.THREE) { setTimeout(boot, 50); return; }
     setupCanvas();
     setupThree();
-    setupCannon();
     renderer.render(scene, camera);
   }
 
   function setupCanvas() {
     dieWrap.querySelectorAll('*').forEach(el => el.style.display = 'none');
-    dieWrap.style.cssText = 'width:' + SIZE + 'px;height:' + SIZE + 'px;display:flex;align-items:center;justify-content:center;';
+    dieWrap.style.cssText = `width:${SIZE}px;height:${SIZE}px;display:flex;align-items:center;justify-content:center;`;
     const cv = document.createElement('canvas');
     cv.id = 'diceCanvas';
     cv.width = SIZE; cv.height = SIZE;
-    cv.style.cssText = 'width:' + SIZE + 'px;height:' + SIZE + 'px;border-radius:14px;display:block;';
+    cv.style.cssText = `width:${SIZE}px;height:${SIZE}px;border-radius:14px;display:block;`;
     dieWrap.appendChild(cv);
   }
 
-  /* ═══════════════════════════════════════════════════
-     THREE.JS
-  ═══════════════════════════════════════════════════ */
+  /* ─── three.js scene ─────────────────────────────── */
   function setupThree() {
     const THREE = window.THREE;
     const cv = document.getElementById('diceCanvas');
+
     renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
     renderer.setSize(SIZE, SIZE);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -99,141 +74,72 @@
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setClearColor(0x000000, 0);
 
-    scene = new THREE.Scene();
-
-    // Camera angled down like looking at a real dice tray
-    camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
-    camera.position.set(0, 7.5, 5.5);
+    scene  = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+    camera.position.set(0, 6, 5.5);
     camera.lookAt(0, FLOOR_Y + 0.5, 0);
 
-    // Rich lighting so ivory dice pop
-    scene.add(new THREE.AmbientLight(0xfff8f0, 0.6));
+    scene.add(new THREE.AmbientLight(0xfff8f0, 0.7));
 
     const key = new THREE.DirectionalLight(0xfff5e0, 1.8);
-    key.position.set(3, 8, 5);
+    key.position.set(4, 10, 6);
     key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.near = 0.1;
-    key.shadow.camera.far  = 30;
-    key.shadow.camera.left = key.shadow.camera.bottom = -8;
-    key.shadow.camera.right = key.shadow.camera.top   =  8;
+    key.shadow.mapSize.set(1024, 1024);
     scene.add(key);
 
-    const fill = new THREE.DirectionalLight(0xc0d8ff, 0.5);
+    const fill = new THREE.DirectionalLight(0xc0d8ff, 0.4);
     fill.position.set(-4, 5, -3);
     scene.add(fill);
 
-    const back = new THREE.DirectionalLight(0xffe0c0, 0.3);
-    back.position.set(0, 3, -6);
-    scene.add(back);
-
-    // Visible felt-green table surface
-    const tableGeo = new THREE.PlaneGeometry(WALL * 2.2, WALL * 2.2);
-    const tableMat = new THREE.MeshStandardMaterial({
-      color: 0x1a3a1a, roughness: 0.95, metalness: 0.0,
-    });
-    const table = new THREE.Mesh(tableGeo, tableMat);
+    // Table surface
+    const table = new THREE.Mesh(
+      new THREE.PlaneGeometry(16, 16),
+      new THREE.MeshStandardMaterial({ color: 0x1a3320, roughness: 0.95, metalness: 0 })
+    );
     table.rotation.x = -Math.PI / 2;
     table.position.y = FLOOR_Y;
     table.receiveShadow = true;
     scene.add(table);
   }
 
-  /* ═══════════════════════════════════════════════════
-     CANNON.JS
-  ═══════════════════════════════════════════════════ */
-  function setupCannon() {
-    const CANNON = window.CANNON;
-    world = new CANNON.World();
-    world.gravity.set(0, -30, 0);
-    world.broadphase = new CANNON.NaiveBroadphase();
-    world.solver.iterations = 30;
-    world.allowSleep = true;
-
-    groundMat = new CANNON.Material('ground');
-    dieMat    = new CANNON.Material('die');
-
-    world.addContactMaterial(new CANNON.ContactMaterial(groundMat, dieMat, {
-      friction:    0.55,
-      restitution: 0.4,   // enough to bounce off corners and tumble
-    }));
-    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, dieMat, {
-      friction:    0.4,
-      restitution: 0.3,
-    }));
-
-    // Floor
-    const floor = new CANNON.Body({ mass: 0, material: groundMat });
-    floor.addShape(new CANNON.Plane());
-    floor.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
-    floor.position.y = FLOOR_Y;
-    world.addBody(floor);
-
-    // Four walls + ceiling
-    const wallDefs = [
-      { pos: [ WALL, 0, 0], ax:[0,0,1], ang:  Math.PI/2 },
-      { pos: [-WALL, 0, 0], ax:[0,0,1], ang: -Math.PI/2 },
-      { pos: [0, 0,  WALL], ax:[1,0,0], ang: -Math.PI/2 },
-      { pos: [0, 0, -WALL], ax:[1,0,0], ang:  Math.PI/2 },
-      { pos: [0, 8,  0],    ax:[1,0,0], ang:  Math.PI/2 },
-    ];
-    wallDefs.forEach(w => {
-      const b = new CANNON.Body({ mass: 0, material: groundMat });
-      b.addShape(new CANNON.Plane());
-      b.position.set(...w.pos);
-      b.quaternion.setFromAxisAngle(new CANNON.Vec3(...w.ax), w.ang);
-      world.addBody(b);
-    });
-  }
-
-  /* ═══════════════════════════════════════════════════
-     VISUAL GEOMETRIES
-  ═══════════════════════════════════════════════════ */
-  function makeVisGeo(type) {
+  /* ─── geometries ─────────────────────────────────── */
+  function makeGeo(type) {
     const THREE = window.THREE;
-    const R = 1.1;
+    const R = 1.05;
     switch (type) {
-      case 'box':        return new THREE.BoxGeometry(1.7, 1.7, 1.7);
+      case 'box':        return new THREE.BoxGeometry(1.65, 1.65, 1.65);
       case 'tetra':      return new THREE.TetrahedronGeometry(R);
       case 'octa':       return new THREE.OctahedronGeometry(R);
       case 'dodeca':     return new THREE.DodecahedronGeometry(R);
       case 'icosa':      return new THREE.IcosahedronGeometry(R);
       case 'sphere':     return new THREE.SphereGeometry(R, 32, 32);
-      case 'cylinder32': return new THREE.CylinderGeometry(R * 0.82, R * 0.82, 0.32, 32);
-      case 'cylinder5':  return new THREE.CylinderGeometry(R * 0.82, R * 0.82, 0.55, 5);
-      case 'cylinder7':  return new THREE.CylinderGeometry(R * 0.82, R * 0.82, 0.55, 7);
-      case 'd10':        return makeD10VisGeo(R);
+      case 'cylinder32': return new THREE.CylinderGeometry(R*0.85, R*0.85, 0.38, 32);
+      case 'cylinder5':  return new THREE.CylinderGeometry(R*0.85, R*0.85, 0.6,  5);
+      case 'cylinder7':  return new THREE.CylinderGeometry(R*0.85, R*0.85, 0.6,  7);
+      case 'd10':        return makeD10Geo(R);
       default:           return new THREE.SphereGeometry(R, 16, 16);
     }
   }
 
-  function makeD10VisGeo(R) {
-    const THREE  = window.THREE;
-    const n      = 5;
-    const topY   =  R * 1.2;
-    const botY   = -R * 1.2;
-    const upY    =  R * 0.22;
-    const loY    = -R * 0.22;
-    const twist  = Math.PI / n;
-
-    const V = [new THREE.Vector3(0, topY, 0)]; // 0 = top apex
+  function makeD10Geo(R) {
+    const THREE = window.THREE;
+    const n = 5, twist = Math.PI / n;
+    const topY = R*1.2, botY = -R*1.2, upY = R*0.22, loY = -R*0.22;
+    const V = [new THREE.Vector3(0, topY, 0)];
     for (let i = 0; i < n; i++) {
-      const a = (2 * Math.PI * i) / n;
-      V.push(new THREE.Vector3(R * Math.cos(a), upY, R * Math.sin(a)));
+      const a = 2*Math.PI*i/n;
+      V.push(new THREE.Vector3(R*Math.cos(a), upY, R*Math.sin(a)));
     }
     for (let i = 0; i < n; i++) {
-      const a = (2 * Math.PI * i) / n + twist;
-      V.push(new THREE.Vector3(R * Math.cos(a), loY, R * Math.sin(a)));
+      const a = 2*Math.PI*i/n + twist;
+      V.push(new THREE.Vector3(R*Math.cos(a), loY, R*Math.sin(a)));
     }
-    V.push(new THREE.Vector3(0, botY, 0)); // 11 = bot apex
-
-    // Build triangles ensuring outward normals via centroid test
+    V.push(new THREE.Vector3(0, botY, 0));
     const tris = [];
     for (let i = 0; i < n; i++) {
-      const u0 = 1+i, u1 = 1+(i+1)%n, l0 = 6+i, l1 = 6+(i+1)%n;
+      const u0=1+i, u1=1+(i+1)%n, l0=6+i, l1=6+(i+1)%n;
       tris.push([0,u0,l0],[0,l0,u1],[11,u1,l0],[11,l1,u1]);
     }
-
     const pos=[], nor=[], uv=[];
     tris.forEach(([ai,bi,ci]) => {
       const va=V[ai], vb=V[bi], vc=V[ci];
@@ -242,11 +148,10 @@
       const ac=new THREE.Vector3().subVectors(vc,va);
       const n3=new THREE.Vector3().crossVectors(ab,ac).normalize();
       const cen=new THREE.Vector3().addVectors(va,vb).add(vc).multiplyScalar(1/3);
-      if(n3.dot(cen)<0) n3.negate();
-      for(let k=0;k<3;k++) nor.push(n3.x,n3.y,n3.z);
+      if (n3.dot(cen) < 0) n3.negate();
+      for (let k=0; k<3; k++) nor.push(n3.x,n3.y,n3.z);
       uv.push(0,0,1,0,0.5,1);
     });
-
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('normal',   new THREE.Float32BufferAttribute(nor, 3));
@@ -254,150 +159,44 @@
     return geo;
   }
 
-  /* ═══════════════════════════════════════════════════
-     PHYSICS SHAPES  — simple primitives only, no ConvexPolyhedron
-  ═══════════════════════════════════════════════════ */
-  function makePhysShape(type, args) {
-    const CANNON = window.CANNON;
-    switch (type) {
-      case 'box':
-        return new CANNON.Box(new CANNON.Vec3(...args));
-      case 'sphere':
-        return new CANNON.Sphere(args[0]);
-      case 'cylinder':
-        return new CANNON.Cylinder(args[0], args[1], args[2], args[3]);
-      default:
-        return new CANNON.Sphere(1.1);
-    }
-  }
-
-  /* ═══════════════════════════════════════════════════
-     VISUAL MATERIALS
-  ═══════════════════════════════════════════════════ */
+  /* ─── materials ──────────────────────────────────── */
   function matDefault() {
-    return new THREE.MeshStandardMaterial({
-      color: 0xf2ece0, roughness: 0.3, metalness: 0.1,
-      emissive: 0x1a1408, emissiveIntensity: 0.05,
-    });
+    return new THREE.MeshStandardMaterial({ color:0xf2ece0, roughness:0.3, metalness:0.12 });
   }
   function matHope() {
-    return new THREE.MeshStandardMaterial({
-      color: 0xc8e8ff, roughness: 0.3, metalness: 0.15,
-      emissive: 0x001828, emissiveIntensity: 0.08,
-    });
+    return new THREE.MeshStandardMaterial({ color:0xc8e8ff, roughness:0.3, metalness:0.15 });
   }
   function matFear() {
-    return new THREE.MeshStandardMaterial({
-      color: 0xffd8d0, roughness: 0.3, metalness: 0.15,
-      emissive: 0x280008, emissiveIntensity: 0.08,
-    });
+    return new THREE.MeshStandardMaterial({ color:0xffd8d0, roughness:0.3, metalness:0.15 });
   }
 
-  /* ═══════════════════════════════════════════════════
-     SPAWN ONE DIE
-     Returns { mesh, body }
-  ═══════════════════════════════════════════════════ */
-  function spawnDie(dieKey, visMat, offsetX, isRoll) {
-    const THREE  = window.THREE;
-    const CANNON = window.CANNON;
-    const def    = DIE_DEFS[dieKey] || DIE_DEFS['6'];
-
-    // Visual mesh
-    const geo  = makeVisGeo(def.visGeo);
+  /* ─── spawn a static mesh ────────────────────────── */
+  function spawnMesh(geoType, mat) {
+    const THREE = window.THREE;
+    const geo   = makeGeo(geoType);
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, visMat);
-    mesh.castShadow    = true;
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
-
-    // Physics body — always a simple primitive
-    const shape = makePhysShape(def.phys, def.physArgs);
-    const body  = new CANNON.Body({
-      mass:            1,
-      material:        dieMat,
-      linearDamping:   0.05,  // minimal air resistance — friction handles slowing
-      angularDamping:  0.05,
-      sleepTimeLimit:  0.8,
-      sleepSpeedLimit: 0.1,
-    });
-    body.allowSleep = true;
-    body.addShape(shape);
-
-    if (isRoll) {
-      // Throw from above at an angle — like releasing a die from hand height.
-      // It drops down, hits a corner, bounces and tumbles across the table.
-      // Start offset from centre, up in the air, with downward + lateral velocity.
-      const angle  = Math.random() * Math.PI * 2;
-      const startR = WALL * 0.5 + Math.random() * WALL * 0.25; // offset from centre
-      body.position.set(
-        offsetX + Math.cos(angle) * startR,
-        FLOOR_Y + 2.5 + Math.random() * 1.5,   // hand-height above table
-        Math.sin(angle) * startR
-      );
-
-      // Velocity: mostly downward with lateral component toward centre
-      const lateralSpeed = 2 + Math.random() * 2;
-      body.velocity.set(
-        -Math.cos(angle) * lateralSpeed,
-        -(4 + Math.random() * 3),               // dropping down fairly fast
-        -Math.sin(angle) * lateralSpeed
-      );
-
-      // Random tumbling spin — die rotates freely as it falls
-      const spin = 15 + Math.random() * 15;
-      body.angularVelocity.set(
-        (Math.random() - 0.5) * spin,
-        (Math.random() - 0.5) * spin,
-        (Math.random() - 0.5) * spin
-      );
-    } else {
-      // Preview: drop from just above centre with gentle spin
-      body.position.set(
-        offsetX + (Math.random() - 0.5) * 0.5,
-        FLOOR_Y + 2.0,
-        (Math.random() - 0.5) * 0.5
-      );
-      body.velocity.set(
-        (Math.random() - 0.5) * 1.0,
-        -2.0,
-        (Math.random() - 0.5) * 1.0
-      );
-      body.angularVelocity.set(
-        (Math.random() - 0.5) * 4,
-        (Math.random() - 0.5) * 4,
-        (Math.random() - 0.5) * 4
-      );
-    }
-
-    world.addBody(body);
-    return { mesh, body };
+    return mesh;
   }
 
-  /* ═══════════════════════════════════════════════════
-     CLEAR
-  ═══════════════════════════════════════════════════ */
+  /* ─── clear dice ─────────────────────────────────── */
   function clearDice() {
     removeSprites();
     [meshA, meshB].forEach(m => {
       if (m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
     });
-    [bodyA, bodyB].forEach(b => { if (b) world.remove(b); });
-    meshA = meshB = bodyA = bodyB = null;
+    meshA = meshB = null;
   }
 
-  /* ═══════════════════════════════════════════════════
-     RENDER LOOP
-  ═══════════════════════════════════════════════════ */
-  function startLoop() {
+  /* ─── render loop ────────────────────────────────── */
+  function startLoop(onFrame) {
     if (rafId) cancelAnimationFrame(rafId);
-    lastTime = null;
     function tick(now) {
       rafId = requestAnimationFrame(tick);
-      const dt = lastTime ? Math.min((now - lastTime) / 1000, 1/20) : 1/60;
-      lastTime = now;
-      world.step(1/60, dt, SUBSTEPS);
-      if (meshA && bodyA) { meshA.position.copy(bodyA.position); meshA.quaternion.copy(bodyA.quaternion); }
-      if (meshB && bodyB) { meshB.position.copy(bodyB.position); meshB.quaternion.copy(bodyB.quaternion); }
+      onFrame(now);
       renderer.render(scene, camera);
     }
     requestAnimationFrame(tick);
@@ -405,30 +204,30 @@
 
   function stopLoop() {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    if (renderer) renderer.render(scene, camera);
+    renderer.render(scene, camera);
   }
 
-  /* ═══════════════════════════════════════════════════
-     NUMBER LABEL SPRITE
-  ═══════════════════════════════════════════════════ */
+  /* ─── number sprite ──────────────────────────────── */
   function makeSprite(text, color) {
     const THREE = window.THREE;
     const cv    = document.createElement('canvas');
     cv.width = 256; cv.height = 256;
-    const ctx = cv.getContext('2d');
+    const ctx   = cv.getContext('2d');
     ctx.clearRect(0, 0, 256, 256);
-    ctx.fillStyle = 'rgba(8,6,18,0.82)';
+    ctx.fillStyle = 'rgba(8,6,18,0.85)';
     ctx.beginPath();
-    ctx.roundRect(20, 70, 216, 116, 22);
+    ctx.roundRect(18, 68, 220, 120, 24);
     ctx.fill();
-    ctx.fillStyle   = color || '#f2ece0';
-    ctx.font        = 'bold 100px "Fira Sans", Arial, sans-serif';
-    ctx.textAlign   = 'center';
+    ctx.fillStyle    = color || '#f2ece0';
+    ctx.font         = 'bold 100px "Fira Sans", Arial, sans-serif';
+    ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, 128, 128);
     const tex = new THREE.CanvasTexture(cv);
-    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-    spr.scale.set(2.8, 2.8, 1);
+    const spr = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })
+    );
+    spr.scale.set(3, 3, 1);
     return spr;
   }
 
@@ -439,14 +238,127 @@
 
   function showSprite(mesh, text, color) {
     const spr = makeSprite(text, color);
-    spr.position.set(mesh.position.x, mesh.position.y + 2.6, mesh.position.z);
+    spr.position.set(mesh.position.x, mesh.position.y + 2.8, mesh.position.z);
     scene.add(spr);
     return spr;
   }
 
-  /* ═══════════════════════════════════════════════════
-     DIE SELECTION
-  ═══════════════════════════════════════════════════ */
+  /* ─── scripted roll animation ────────────────────── */
+  /*
+   * The die follows a hand-crafted path:
+   *
+   *  Phase 1 — throw arc  (0% → 40% of duration)
+   *    Die travels from offscreen edge, arcing down to first floor contact.
+   *    Spins fast.
+   *
+   *  Phase 2 — bounces    (40% → 80%)
+   *    Three progressively smaller bounces simulated with a custom
+   *    bounce-ease on the Y axis. Spin decelerates.
+   *
+   *  Phase 3 — settle     (80% → 100%)
+   *    Die slides to a gentle stop, spin almost zero, lands flat.
+   */
+
+  const ROLL_DURATION = 2400; // ms total
+
+  function animateRoll(meshes, duration, onDone) {
+    const startTime = performance.now();
+
+    // Each die gets its own random roll parameters
+    const params = meshes.map((mesh, idx) => {
+      const sign  = idx === 0 ? 1 : -1;
+      // Start position: off to one side, above table
+      const startX = sign * (2.5 + Math.random() * 0.5);
+      const startZ = (Math.random() - 0.5) * 1.5;
+      const endX   = (Math.random() - 0.5) * 1.2 + (meshes.length > 1 ? -sign * 0.8 : 0);
+      const endZ   = (Math.random() - 0.5) * 1.2;
+
+      // Random spin axes
+      const spinX = (Math.random() - 0.5) * 2;
+      const spinY = (Math.random() - 0.5) * 2;
+      const spinZ = (Math.random() - 0.5) * 2;
+      const spinLen = Math.sqrt(spinX*spinX + spinY*spinY + spinZ*spinZ);
+
+      return {
+        startX, startZ, endX, endZ,
+        spinAxis: { x: spinX/spinLen, y: spinY/spinLen, z: spinZ/spinLen },
+        totalRotations: 4 + Math.random() * 3,  // how many full tumbles
+        startY: FLOOR_Y + 2.8,                  // thrown from above
+      };
+    });
+
+    startLoop(function (now) {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1); // 0 → 1
+
+      meshes.forEach((mesh, idx) => {
+        const p = params[idx];
+
+        // ── X/Z position: smooth lerp from start to end ──
+        // Use ease-out so it decelerates as it settles
+        const tXZ   = easeOut(t);
+        mesh.position.x = lerp(p.startX, p.endX, tXZ);
+        mesh.position.z = lerp(p.startZ, p.endZ, tXZ);
+
+        // ── Y position: throw arc + bounces ──
+        mesh.position.y = FLOOR_Y + bounceY(t, p.startY - FLOOR_Y);
+
+        // ── Rotation: fast at start, decelerates to near-stop ──
+        // Total angle = totalRotations * 2PI, driven by eased t
+        const rotT    = easeOutCubic(t);
+        const angle   = rotT * p.totalRotations * Math.PI * 2;
+        const THREE   = window.THREE;
+        const axis    = new THREE.Vector3(p.spinAxis.x, p.spinAxis.y, p.spinAxis.z);
+        mesh.quaternion.setFromAxisAngle(axis, angle);
+      });
+
+      if (t >= 1) {
+        stopLoop();
+        onDone();
+      }
+    });
+  }
+
+  /* ─── easing helpers ─────────────────────────────── */
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function easeOut(t) { return 1 - Math.pow(1 - t, 2); }
+
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+  /*
+   * bounceY: returns height above floor for time t ∈ [0,1]
+   * Simulates throw arc + 3 diminishing bounces
+   * h0 = initial height above floor
+   */
+  function bounceY(t, h0) {
+    // Segments: [0, 0.35] arc down, [0.35, 0.55] bounce1, [0.55, 0.72] bounce2,
+    //           [0.72, 0.84] bounce3, [0.84, 1.0] final rest
+    if (t < 0.35) {
+      // Arc: parabola from h0 down to 0
+      const s = t / 0.35;
+      return h0 * (1 - s * s);
+    }
+    if (t < 0.55) {
+      // Bounce 1: up to h0*0.28, back down
+      const s = (t - 0.35) / 0.20;
+      return h0 * 0.28 * 4 * s * (1 - s);
+    }
+    if (t < 0.72) {
+      // Bounce 2: up to h0*0.10
+      const s = (t - 0.55) / 0.17;
+      return h0 * 0.10 * 4 * s * (1 - s);
+    }
+    if (t < 0.84) {
+      // Bounce 3: tiny — h0*0.035
+      const s = (t - 0.72) / 0.12;
+      return h0 * 0.035 * 4 * s * (1 - s);
+    }
+    // Settled on floor
+    return 0;
+  }
+
+  /* ─── die selection ──────────────────────────────── */
   document.querySelectorAll('.die-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       if (rolling) return;
@@ -456,7 +368,7 @@
       rollBtn.disabled = false;
       rollBtn.querySelector('.roll-btn-label').textContent = 'Roll ' + btn.dataset.label;
       setResult('', '');
-      if (window.THREE && window.CANNON) previewDie(selectedDie);
+      previewDie(selectedDie);
     });
   });
 
@@ -464,21 +376,24 @@
     clearDice();
     stopLoop();
     if (die === 'hopefear') {
-      const h = spawnDie('hopefear', matHope(), -1.1, false);
-      const f = spawnDie('hopefear', matFear(),  1.1, false);
-      meshA = h.mesh; bodyA = h.body;
-      meshB = f.mesh; bodyB = f.body;
+      meshA = spawnMesh(DIE_DEFS['6'], matHope());
+      meshB = spawnMesh(DIE_DEFS['6'], matFear());
+      meshA.position.set(-1.0, FLOOR_Y + 0.85, 0);
+      meshB.position.set( 1.0, FLOOR_Y + 0.85, 0);
     } else {
-      const d = spawnDie(die, matDefault(), 0, false);
-      meshA = d.mesh; bodyA = d.body;
+      meshA = spawnMesh(DIE_DEFS[die] || 'box', matDefault());
+      meshA.position.set(0, FLOOR_Y + 0.85, 0);
     }
-    startLoop();
-    setTimeout(stopLoop, 2000);
+    // Slow idle rotation for preview
+    const startTime = performance.now();
+    startLoop(function (now) {
+      const t = (now - startTime) / 1000;
+      if (meshA) meshA.rotation.y = t * 0.6;
+      if (meshB) meshB.rotation.y = t * 0.6;
+    });
   }
 
-  /* ═══════════════════════════════════════════════════
-     ROLL
-  ═══════════════════════════════════════════════════ */
+  /* ─── roll ───────────────────────────────────────── */
   rollBtn.addEventListener('click', doRoll);
   document.addEventListener('keydown', e => {
     if ((e.code === 'Space' || e.code === 'Enter') && !rolling && selectedDie) {
@@ -501,56 +416,17 @@
     clearDice();
     stopLoop();
 
+    let meshes;
     if (selectedDie === 'hopefear') {
-      const h = spawnDie('hopefear', matHope(), -1.2, true);
-      const f = spawnDie('hopefear', matFear(),  1.2, true);
-      meshA = h.mesh; bodyA = h.body;
-      meshB = f.mesh; bodyB = f.body;
+      meshA  = spawnMesh(DIE_DEFS['6'], matHope());
+      meshB  = spawnMesh(DIE_DEFS['6'], matFear());
+      meshes = [meshA, meshB];
     } else {
-      const d = spawnDie(selectedDie, matDefault(), 0, true);
-      meshA = d.mesh; bodyA = d.body;
+      meshA  = spawnMesh(DIE_DEFS[selectedDie] || 'box', matDefault());
+      meshes = [meshA];
     }
 
-    startLoop();
-
-    const rollStart  = performance.now();
-    let settleTimer  = null;
-    let checkStopped;
-
-    checkStopped = function () {
-      if (!rolling) return;
-      const elapsed = performance.now() - rollStart;
-      const bodies  = [bodyA, bodyB].filter(Boolean);
-
-      const allSettled = bodies.every(b => {
-        // Consider sleeping bodies settled too
-        if (b.sleepState === 2) return true; // CANNON.Body.SLEEPING = 2
-        const lv = b.velocity, av = b.angularVelocity;
-        const linSpd = Math.sqrt(lv.x*lv.x + lv.y*lv.y + lv.z*lv.z);
-        const angSpd = Math.sqrt(av.x*av.x + av.y*av.y + av.z*av.z);
-        return linSpd < 0.15 && angSpd < 0.15;
-      });
-
-      if (elapsed > MAX_ROLL_MS) {
-        // Force stop
-        bodies.forEach(b => { b.velocity.set(0,0,0); b.angularVelocity.set(0,0,0); });
-        if (settleTimer) clearTimeout(settleTimer);
-        setTimeout(finishRoll, SETTLE_MS);
-        return;
-      }
-
-      if (allSettled && elapsed > MIN_ROLL_MS) {
-        if (!settleTimer) settleTimer = setTimeout(finishRoll, SETTLE_MS);
-      } else {
-        if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
-        requestAnimationFrame(checkStopped);
-      }
-    };
-
-    requestAnimationFrame(checkStopped);
-
-    function finishRoll() {
-      stopLoop();
+    animateRoll(meshes, ROLL_DURATION, () => {
       rolling = false;
       rollBtn.classList.remove('rolling');
 
@@ -558,33 +434,47 @@
         spriteA = showSprite(meshA, String(result.hope), '#6bbde8');
         spriteB = showSprite(meshB, String(result.fear), '#e07070');
       } else {
-        const col = result.modifier === 'crit' ? '#ffe066'
+        const col = result.modifier === 'crit'   ? '#ffe066'
                   : result.modifier === 'fumble' ? '#e07070'
                   : '#f2ece0';
         spriteA = showSprite(meshA, String(result.value), col);
       }
-      renderer.render(scene, camera);
+
+      // Idle rotation restarts after showing number
+      const doneTime = performance.now();
+      startLoop(function (now) {
+        const t = (now - doneTime) / 1000;
+        if (meshA) {
+          meshA.position.y = FLOOR_Y + 0.85;
+          meshA.rotation.y += 0.005;
+        }
+        if (meshB) {
+          meshB.position.y = FLOOR_Y + 0.85;
+          meshB.rotation.y += 0.005;
+        }
+        if (spriteA) spriteA.position.y = (meshA ? meshA.position.y : 0) + 2.8;
+        if (spriteB) spriteB.position.y = (meshB ? meshB.position.y : 0) + 2.8;
+      });
+
       setResult(result.label, result.modifier);
       addHistory(result.label, result.modifier);
       setTimeout(() => speakResult(result), 200);
-    }
+    });
   }
 
-  /* ═══════════════════════════════════════════════════
-     COMPUTE / DISPLAY / SPEAK
-  ═══════════════════════════════════════════════════ */
+  /* ─── compute / speak / display ──────────────────── */
   function computeRoll(die) {
     if (die === 'hopefear') {
       const hope = rand(1,12), fear = rand(1,12);
       const outcome = hope >= fear ? 'hope' : 'fear';
-      return { type:'hopefear', hope, fear, total: hope+fear, outcome,
-               label: (hope+fear) + ' with ' + outcome, modifier: outcome };
+      return { type:'hopefear', hope, fear, total:hope+fear, outcome,
+               label:(hope+fear)+' with '+outcome, modifier:outcome };
     }
     const sides = parseInt(die, 10);
     const value = rand(1, sides);
     const mod   = die==='20' && value===20 ? 'crit'
                 : die==='20' && value===1  ? 'fumble' : '';
-    return { type:'normal', sides, value, label:'D'+sides+': '+value, modifier: mod };
+    return { type:'normal', sides, value, label:'D'+sides+': '+value, modifier:mod };
   }
 
   function speakResult(result) {
@@ -605,9 +495,7 @@
     }
   }
 
-  /* ═══════════════════════════════════════════════════
-     HISTORY
-  ═══════════════════════════════════════════════════ */
+  /* ─── history ────────────────────────────────────── */
   function addHistory(label, modifier) {
     const empty = historyLog.querySelector('.history-empty');
     if (empty) empty.remove();
@@ -621,9 +509,7 @@
     historyLog.innerHTML = '<span class="history-empty">No rolls yet</span>';
   });
 
-  /* ═══════════════════════════════════════════════════
-     AUDIO
-  ═══════════════════════════════════════════════════ */
+  /* ─── audio ──────────────────────────────────────── */
   const audioCache = {};
   function getAudio(src) {
     if (!audioCache[src]) { const a = new Audio(src); a.preload='auto'; audioCache[src]=a; }
@@ -634,7 +520,7 @@
       const a = getAudio('/assets/dice-roll.mp3');
       a.currentTime = 0;
       const p = a.play();
-      if (p) p.then(() => setTimeout(() => { a.pause(); a.currentTime=0; }, 1200)).catch(()=>{});
+      if (p) p.then(() => setTimeout(() => { a.pause(); a.currentTime=0; }, 1500)).catch(()=>{});
     } catch(_) {}
   }
   function playNumberSound(n) {
@@ -644,9 +530,7 @@
     } catch(_) {}
   }
 
-  /* ═══════════════════════════════════════════════════
-     STREAMER MODE
-  ═══════════════════════════════════════════════════ */
+  /* ─── streamer mode ──────────────────────────────── */
   const streamerBtn  = document.getElementById('streamerToggle');
   const STREAMER_KEY = 'diceroller-streamer';
 
