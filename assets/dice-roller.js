@@ -17,7 +17,7 @@
   const FLOOR_Y     = -1.8;
   const WALL        = 4.0;
   const MAX_ROLL_MS = 5000;
-  const MIN_ROLL_MS = 1200;   // die must roll for at least this long
+  const MIN_ROLL_MS = 1800;   // die must roll for at least this long
   const SETTLE_MS   = 500;    // pause after settling before showing number
   const SUBSTEPS    = 8;
 
@@ -145,7 +145,7 @@
   function setupCannon() {
     const CANNON = window.CANNON;
     world = new CANNON.World();
-    world.gravity.set(0, -45, 0);
+    world.gravity.set(0, -20, 0);
     world.broadphase = new CANNON.NaiveBroadphase();
     world.solver.iterations = 30;
     world.allowSleep = true;
@@ -154,12 +154,12 @@
     dieMat    = new CANNON.Material('die');
 
     world.addContactMaterial(new CANNON.ContactMaterial(groundMat, dieMat, {
-      friction:    0.8,    // high friction = tumbling, not sliding
-      restitution: 0.05,   // near-zero = energy dies on first bounce
+      friction:    0.7,   // felt-like grip — rolls not slides
+      restitution: 0.18,  // small bounce on first hit, then rolls to stop
     }));
     world.addContactMaterial(new CANNON.ContactMaterial(dieMat, dieMat, {
-      friction:    0.6,
-      restitution: 0.02,
+      friction:    0.5,
+      restitution: 0.1,
     }));
 
     // Floor
@@ -315,49 +315,49 @@
     const body  = new CANNON.Body({
       mass:            1,
       material:        dieMat,
-      linearDamping:   0.6,   // absorbs energy between bounces fast
-      angularDamping:  0.6,   // spin dies out quickly after landing
-      sleepTimeLimit:  0.3,   // sleep after 0.3s of low motion
-      sleepSpeedLimit: 0.15,  // aggressive sleep threshold
+      linearDamping:   0.18,  // lets die roll across table naturally
+      angularDamping:  0.25,  // spin slows realistically from friction
+      sleepTimeLimit:  0.5,
+      sleepSpeedLimit: 0.12,
     });
     body.allowSleep = true;
     body.addShape(shape);
 
     if (isRoll) {
-      // Throw: spawn above tray with strong horizontal+spin
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 7 + Math.random() * 5;
-      body.position.set(
-        offsetX + (Math.random() - 0.5) * 1.2,
-        4.5 + Math.random() * 2,
-        (Math.random() - 0.5) * 1.2
-      );
-      body.velocity.set(
-        Math.cos(angle) * speed,
-        -(2 + Math.random() * 2),
-        Math.sin(angle) * speed
-      );
+      // Start just above the floor at one edge of the tray, throw across it
+      // like a real hand-throw across a table — horizontal velocity, tumbling spin
+      const fromEdge = (Math.random() < 0.5 ? 1 : -1);
+      const startX   = offsetX + fromEdge * (WALL * 0.65 + Math.random() * 0.3);
+      const startZ   = (Math.random() - 0.5) * (WALL * 0.8);
+      body.position.set(startX, FLOOR_Y + 1.2, startZ);
+
+      // Throw toward opposite side with slight randomness
+      const throwX   = -fromEdge * (5 + Math.random() * 4);
+      const throwZ   = (Math.random() - 0.5) * 4;
+      body.velocity.set(throwX, 0.5 + Math.random() * 0.5, throwZ);
+
+      // Vigorous tumbling spin — primarily around the axes perpendicular to motion
       body.angularVelocity.set(
-        (Math.random() - 0.5) * 50,
-        (Math.random() - 0.5) * 50,
-        (Math.random() - 0.5) * 50
+        (Math.random() - 0.5) * 30,
+        (Math.random() - 0.5) * 20,
+        (Math.random() - 0.5) * 30
       );
     } else {
-      // Preview: gentle drop
+      // Preview: place near centre, gentle settle
       body.position.set(
-        offsetX + (Math.random() - 0.5) * 0.4,
-        3.5 + Math.random(),
-        (Math.random() - 0.5) * 0.4
+        offsetX + (Math.random() - 0.5) * 0.5,
+        FLOOR_Y + 1.5,
+        (Math.random() - 0.5) * 0.5
       );
       body.velocity.set(
         (Math.random() - 0.5) * 1.5,
-        -1,
+        0,
         (Math.random() - 0.5) * 1.5
       );
       body.angularVelocity.set(
-        (Math.random() - 0.5) * 6,
-        (Math.random() - 0.5) * 6,
-        (Math.random() - 0.5) * 6
+        (Math.random() - 0.5) * 5,
+        (Math.random() - 0.5) * 5,
+        (Math.random() - 0.5) * 5
       );
     }
 

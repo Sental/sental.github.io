@@ -291,41 +291,59 @@ body {
 .streamer-icon { font-size: 1rem; line-height: 1; }
 
 /* --- Streamer mode --- */
-/* Hides the Jekyll theme chrome (header/nav/footer injected by the theme) */
-body.streamer-mode > header,
-body.streamer-mode > nav,
-body.streamer-mode > footer,
-body.streamer-mode .site-header,
+/*
+ * Jekyll minimal theme renders:
+ *   .wrapper > .page-header    (site title / description)
+ *   .wrapper > .main-content   (our page content lands here)
+ *   .wrapper > .site-footer
+ * We hide the chrome and make our main element fill the viewport.
+ */
+body.streamer-mode .page-header,
 body.streamer-mode .site-footer,
-body.streamer-mode .page-header {
+body.streamer-mode header,
+body.streamer-mode footer,
+body.streamer-mode nav {
   display: none !important;
 }
 
-/* Centre the main panel and hide everything except the stage */
+body.streamer-mode .wrapper,
+body.streamer-mode .main-content {
+  max-width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+}
+
 body.streamer-mode {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
+  display: block;
   padding: 0;
+  margin: 0;
 }
 
 body.streamer-mode .roller-main {
-  padding: 1.5rem;
+  max-width: 100%;
+  width: 100%;
+  min-height: 100vh;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 1rem;
 }
 
-/* Hide: title, die selector, history — keep: top-bar (for the toggle), stage */
+/* Hide: title and die selector — keep stage + history + toggle */
 body.streamer-mode .roller-title,
 body.streamer-mode .dice-selector {
   display: none !important;
 }
 
-/* Keep the toggle visible in streamer mode but label changes via JS */
-body.streamer-mode .streamer-toggle {
-  margin-bottom: 0.75rem;
+body.streamer-mode .top-bar {
+  justify-content: center;
+}
+
+body.streamer-mode .stage {
+  margin-bottom: 1rem;
 }
 
 @keyframes flashIn {
