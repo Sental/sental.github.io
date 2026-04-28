@@ -340,8 +340,7 @@ body.streamer-mode .roller-main {
 }
 
 /* Hide: title and die selector — keep stage + history + toggle */
-body.streamer-mode .roller-title,
-body.streamer-mode .dice-selector {
+body.streamer-mode .roller-title {
   display: none !important;
 }
 
@@ -351,6 +350,11 @@ body.streamer-mode .top-bar {
 
 body.streamer-mode .stage {
   margin-bottom: 1rem;
+}
+
+body.streamer-mode .wrapper section {
+  float: none;
+  margin: auto;
 }
 
 @keyframes flashIn {
