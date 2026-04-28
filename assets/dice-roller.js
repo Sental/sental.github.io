@@ -233,8 +233,8 @@
         return M(0x2d6a3f, 0.38, 0.15, 0x001a08, 0.06);
       case '5':   // d5 — purple
         return M(0x6a3a9a, 0.35, 0.2,  0x1a0030, 0.08);
-      case '6':   // d6 — classic cream ivory
-        return M(0xf0e8d0, 0.25, 0.08, 0x1a1408, 0.04);
+      case '6':   // d6 — classic cream ivory changed to eadfbd
+        return M(0xeadfbd, 0.25, 0.08, 0x1a1408, 0.04);
       case '7':   // d7 — teal
         return M(0x1a7a6e, 0.4,  0.18, 0x001a18, 0.06);
       case '8':   // d8 — steel blue-grey metallic
